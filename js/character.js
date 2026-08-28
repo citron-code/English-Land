@@ -76,31 +76,34 @@
     shoe:  { w: 0.178, h: 0.165, d: 0.315, toeOut: 0.058, soleT: 0.062 },
 
     face: {
-      eye:  { w: 0.092, h: 0.122, d: 0.062, x: 0.093, y: 0.024, inset: 0.016, tiltDeg: 4, yawDeg: 12 },
-      brow: { w: 0.082, h: 0.018, d: 0.026, y: 0.112, tiltDeg: 8 },
+      // rounder than an almond, and the highlight is a flat decal ON the eye -
+      // a protruding sphere reads as a bead glued to the face
+      eye:  { w: 0.095, h: 0.118, d: 0.055, x: 0.090, y: 0.020, inset: 0.014,
+              tiltDeg: 3, yawDeg: 9,
+              spark: { d: 0.030, x: -0.019, y: 0.031, flat: 0.35 } },
+      brow: { w: 0.082, h: 0.016, d: 0.026, y: 0.093, tiltDeg: 8 },
       nose: { r: 0.031, h: 0.046, y: -0.038, thin: 0.55 },
       mouth:{ w: 0.090, lift: 0.021, y: -0.106, r: 0.0080 },
       ear:  { r: 0.050, xFactor: 0.955, y: -0.016 },
       earring: { d: 0.056, t: 0.012, drop: 0.070 }
     },
 
-    /* The reference hair is a tall rounded mop: it clears the skull by roughly
-     * 60% of the skull diameter, so the cap is stretched in Y rather than just
-     * offset. Few, large facets - not many small spikes. */
+    /* Hair is a shell CONCENTRIC with the skull - only `shell` thicker than it
+     * everywhere - so it can never lift off the head. Volume comes from raising
+     * the crown, never from scaling XZ: a cap wider than the head shows a brim
+     * under it and reads as a mushroom sitting on top.
+     *
+     * All roughness uses coherent angular noise, so neighbouring vertices move
+     * together and the silhouette waves. Per-vertex randomness shatters it. */
     hair: {
-      // volXZ > 1 so the mop sits wider than the skull at ear level, the way a
-      // bowl cut actually hangs - a cap narrower than the head looks shrunken
-      cap:    { rExtra: 0.032, slice: 0.60, up: 0.044, back: -0.016,
-                tiltDeg: 6, segments: 8, volY: 1.26, volXZ: 1.10 },
-      // Hairline arc: y is the height at the temples, dip lowers it centrally.
-      // jag roughens that edge and rimJag roughens the rim all the way round,
-      // which is what gives the bowl-cut its spiky low-poly outline.
-      cut:    { y: 0.185, dip: 0.040, jag: 0.050, rimJag: 0.045, sideReach: 0.38 },
-      jag:    { amount: 0.032, frontDamp: 0.40 },   // radial vertex displacement
-      tufts:  { count: 8, len: [0.045, 0.090], r: [0.085, 0.145] },
-      fringe: { count: 5, spreadDeg: 120, len: [0.060, 0.100], r: [0.055, 0.085], dropDeg: 74 },
-      burns:  { len: 0.072, r: 0.055 },
-      seed:   20260828
+      shell: 0.026, crown: 0.108, slice: 0.64, segments: 12, back: -0.010,
+      facet: 0.017,          // coherent radial wobble -> low-poly faceting
+      rimWave: 0.042,        // points around the lower edge
+      // hairline: y at the temples, dip lowers it centrally, wave roughens it
+      cut:   { y: 0.126, dip: 0.040, wave: 0.019, sideReach: 0.38 },
+      tufts: { count: 6, len: [0.040, 0.078], r: [0.060, 0.100] },
+      burns: { len: 0.052, r: 0.038 },
+      seed:  20260828
     },
 
     colors: {
@@ -149,62 +152,58 @@
     const R = C.head.r, H = C.hair;
     const pieces = [];
 
-    /* --- faceted cap: low-poly sphere slice, vertices pushed out randomly --- */
+    /* Coherent angular noise: a few summed sines. Neighbouring vertices get
+     * near-identical values, so the surface facets and the rim waves. Feeding
+     * rng() per vertex instead is what shattered the old rim into shards. */
+    const p1 = rng() * 6.283, p2 = rng() * 6.283, p3 = rng() * 6.283;
+    const wave = (a) =>
+      Math.sin(a * 3 + p1) * 0.55 + Math.sin(a * 5 + p2) * 0.30 + Math.sin(a * 9 + p3) * 0.15;
+
+    const rr = R + H.shell;                 // concentric with the skull
     const cap = B.MeshBuilder.CreateSphere('hairCap', {
-      diameter: 2 * (R + H.cap.rExtra),
-      segments: H.cap.segments,
-      slice: H.cap.slice
+      diameter: 2 * rr, segments: H.segments, slice: H.slice
     }, scene);
 
-    const rr = R + H.cap.rExtra;
     const pos = cap.getVerticesData(B.VertexBuffer.PositionKind);
     for (let i = 0; i < pos.length; i += 3) {
       const v = V3(pos[i], pos[i + 1], pos[i + 2]);
       const len = v.length();
       if (len < 1e-5) continue;
       const n = v.scale(1 / len);
-      // keep the forehead edge tidier, let the crown/back go jagged
-      const front = Math.max(0, n.z);
-      const damp  = 1 - front * (1 - H.jag.frontDamp);
-      // vertices near the bottom rim stay put so the cap seats on the skull
-      const rim   = Math.min(1, Math.max(0, (n.y + 0.15) / 0.5));
-      const push  = (rng() - 0.25) * H.jag.amount * damp * rim;
+      const az = Math.atan2(n.x, n.z);
 
-      // radial jag, then stretch into the tall mop volume
-      const x = n.x * (len + push) * H.cap.volXZ;
-      let   y = n.y * (len + push) * H.cap.volY + H.cap.up;
-      const z = n.z * (len + push) * H.cap.volXZ + H.cap.back;
+      // faceting stays radial, so the shell keeps hugging the skull
+      const r = len + wave(az * 1.7 + n.y * 3.0) * H.facet;
+      const x = n.x * r;
+      let   y = n.y * r;
+      const z = n.z * r + H.back;
 
-      // Carve the hairline so the face stays clear. Front-facing vertices are
-      // lifted onto an arc that dips toward the centre of the forehead; the
-      // lift fades to nothing around the sides so the back stays covered.
-      // Per-vertex noise on that height gives the edge its spiky outline.
-      const t  = Math.min(1, Math.abs(x) / (rr * H.cap.volXZ));
-      const hy = H.cut.y - (1 - t * t) * H.cut.dip + (rng() - 0.5) * H.cut.jag;
-      // The lift has to reach round the temples too, not just the front: with a
-      // front-only weight the sides hang low and cover the eye in profile.
-      // Full lift facing forward, partial at the sides, none at the back.
+      // Crown volume: raise the top only. Scaling XZ instead would push the
+      // shell off the sides of the head and expose a brim underneath.
+      y += H.crown * Math.pow(Math.max(0, n.y), 1.4);
+
+      // hairline: lift front vertices onto an arc that dips centrally, fading
+      // out around the temples so the back and sides stay covered
+      const t  = Math.min(1, Math.abs(x) / rr);
+      const hy = H.cut.y - (1 - t * t) * H.cut.dip + wave(az * 2.0) * H.cut.wave;
       const lift = Math.min(1, Math.max(0, n.z + H.cut.sideReach));
       if (y < hy) y += (hy - y) * lift;
 
-      // ...and rough up the rim all the way round, so the back and sides end
-      // in points too rather than a clean machined circle
+      // points around the lower edge, coherent so they read as locks of hair
       const low = 1 - Math.min(1, Math.max(0, (n.y + 0.30) / 0.45));
-      y -= rng() * H.cut.rimJag * low;
+      y += wave(az * 4.0 + 1.3) * H.rimWave * low;
 
       pos[i] = x; pos[i + 1] = y; pos[i + 2] = z;
     }
     cap.setVerticesData(B.VertexBuffer.PositionKind, pos);
-    cap.rotation.x = -deg(H.cap.tiltDeg);
-    cap.bakeCurrentTransformIntoVertices();     // so tufts can seat against it
     pieces.push(cap);
 
-    // where the (now stretched) cap surface sits along a given direction
+    // where the shell surface sits along a given direction
     const capSurface = (dir) => {
       const d = dir.normalizeToNew();
-      return V3(d.x * rr * H.cap.volXZ,
-                d.y * rr * H.cap.volY + H.cap.up,
-                d.z * rr * H.cap.volXZ + H.cap.back);
+      return V3(d.x * rr,
+                d.y * rr + H.crown * Math.pow(Math.max(0, d.y), 1.4),
+                d.z * rr + H.back);
     };
 
     /* ------------------------------------------- chunky tuft / spike helper */
@@ -244,31 +243,16 @@
       addChunk(dir, point, len, baseR, 4, 0.55, 0.45);
     }
 
-    /* --- front fringe: strands seated ON the hairline, hanging down over the
-     * forehead. Seating them on the arc (not the uncut dome) is what stops
-     * them reading as fangs stuck to the middle of the face. --- */
-    const spread = deg(H.fringe.spreadDeg);
-    const rx = rr * H.cap.volXZ;
-    for (let i = 0; i < H.fringe.count; i++) {
-      const f = H.fringe.count === 1 ? 0.5 : i / (H.fringe.count - 1);
-      const theta = -spread / 2 + f * spread;
-      const x  = Math.sin(theta) * rx * 0.86;
-      const t  = Math.min(1, Math.abs(x) / rx);
-      const hy = H.cut.y - (1 - t * t) * H.cut.dip;
-      const z  = Math.sqrt(Math.max(0.0001, rx * rx - x * x)) * 0.88 + H.cap.back;
+    /* The fringe is now carved into the shell edge itself (see the hairline
+     * arc above), not bolted on as separate cones - those read as fangs. */
 
-      const len   = H.fringe.len[0] + rng() * (H.fringe.len[1] - H.fringe.len[0]);
-      const baseR = H.fringe.r[0]   + rng() * (H.fringe.r[1]   - H.fringe.r[0]);
-      const drop  = deg(H.fringe.dropDeg);
-      const point = V3((x / rx) * 0.45, -Math.sin(drop), Math.cos(drop) * 0.80).normalize();
-      addChunkAt(V3(x, hy + 0.025, z), point, len, baseR, 4, 0.75, 0.20);
-    }
-
-    /* --- sideburns: level with the ear, not forward of it, or they rake
-     * across the face in profile --- */
+    /* Sideburns: seated just forward of the ear and angled down the temple.
+     * Kept small and tucked - out at the equator they protrude past the hair
+     * silhouette and read as black wings sticking off the head. */
     [-1, 1].forEach((side) => {
-      const dir = V3(side * 0.97, 0.06, 0.06).normalize();
-      addChunk(dir, V3(side * 0.28, -1, 0.06).normalize(), H.burns.len, H.burns.r, 4, 0.8, 0.1);
+      const dir = V3(side * 0.94, 0.22, 0.30).normalize();
+      addChunk(dir, V3(side * 0.16, -1, 0.10).normalize(),
+               H.burns.len, H.burns.r, 4, 0.35, 0.08);
     });
 
     const hair = B.Mesh.MergeMeshes(pieces, true, true, undefined, false, false);
@@ -326,9 +310,13 @@
       ball.material = mats.eye;
       ball.parent = g;
 
-      const spark = sph('eyeSpark' + (side < 0 ? 'L' : 'R'), 0.040, 8);
+      // Flattened and offset to the same side on BOTH eyes, so the highlight
+      // reads as one light source rather than a cross-eyed pair of beads.
+      const S = F.eye.spark;
+      const spark = sph('eyeSpark' + (side < 0 ? 'L' : 'R'), S.d, 10);
+      spark.scaling.z = S.flat;
       spark.material = mats.spark;
-      spark.position.set(side * -0.022, 0.036, F.eye.d * 0.5 + 0.003);
+      spark.position.set(S.x, S.y, F.eye.d * 0.5 - S.d * 0.5 * S.flat + 0.004);
       spark.parent = g;
       return g;
     };
@@ -439,28 +427,37 @@
       c.rotation.x = deg(14);
     });
 
-    /* necktie - knot, blade and mitred tip, each on the chest surface */
+    /* Necktie. Three separate boxes at fixed depths visibly step apart as the
+     * torso tapers, so the blade is ONE ribbon whose vertices are wrapped onto
+     * the chest at whatever radius the torso has at each height. */
     const knotY = T.yTop - 0.048;
-    const knot = box('tieKnot', 0.070, 0.074, 0.046);
+    const knot = box('tieKnot', 0.072, 0.076, 0.046);
     knot.material = mats.dark;
     knot.parent = torsoPivot;
-    knot.position.copyFrom(onChest(knotY, 0.016));
+    knot.position.copyFrom(onChest(knotY, 0.014));
     knot.rotation.x = deg(6);
 
-    const bladeY = T.yTop - 0.180;
-    const blade = box('tieBlade', 0.076, 0.215, 0.030);
+    const tieTop = knotY - 0.020;                 // starts inside the knot
+    const tieBot = T.yTop - 0.345;
+    const STEPS = 26;
+    const edgeL = [], edgeR = [];
+    for (let i = 0; i <= STEPS; i++) {
+      const f = i / STEPS;
+      const y = tieTop + (tieBot - tieTop) * f;
+      // narrow under the knot, widening down the blade, then mitred to a point
+      const w = f > 0.88
+        ? 0.098 * (1 - (f - 0.88) / 0.12) + 0.004
+        : 0.070 + 0.028 * Math.pow(f / 0.88, 0.8);
+      const rad = torsoR(y) + 0.006;              // sit just proud of the shirt
+      const ang = Math.asin(Math.min(0.98, (w / 2) / rad));
+      edgeL.push(V3(-Math.sin(ang) * rad, y, Math.cos(ang) * rad));
+      edgeR.push(V3( Math.sin(ang) * rad, y, Math.cos(ang) * rad));
+    }
+    const blade = B.MeshBuilder.CreateRibbon('tieBlade', {
+      pathArray: [edgeL, edgeR], sideOrientation: B.Mesh.DOUBLESIDE
+    }, scene);
     blade.material = mats.dark;
     blade.parent = torsoPivot;
-    blade.position.copyFrom(onChest(bladeY, 0.010));
-    blade.rotation.x = deg(-5);
-
-    const tipY = T.yTop - 0.298;
-    const tieTip = box('tieTip', 0.076, 0.076, 0.030);
-    tieTip.material = mats.dark;
-    tieTip.parent = torsoPivot;
-    tieTip.rotation.z = deg(45);
-    tieTip.rotation.x = deg(-5);
-    tieTip.position.copyFrom(onChest(tipY, 0.008));
 
     /* ---------------------------------------------------------------- arms */
     const A = C.arm;
