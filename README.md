@@ -78,6 +78,21 @@ createCharacter(scene, {
 4. **Emotes** - six, on `Z X C V Q E`.
 5. **The base camp island** - house, garden, playground, pool, paths, and a
    ring of trees on a round island in open water.
+6. **Polish** - butterflies, drifting clouds, a gradient sky dome, a pier with a
+   moored boat, shore foam, and a lot more prop detail.
+
+## Animated things
+
+Most props are static and get merged, but a few are deliberately left out of
+the merge and driven from `world.update(dt)`:
+
+| Thing | Motion |
+| --- | --- |
+| Butterflies | Wander on summed sines; heading is taken by sampling the same curve slightly ahead, so they always face their travel. Wings beat independently of drift speed. |
+| Clouds | Slow drift, wrapping around the sky |
+| Campfire | Flame flicker and rotation |
+| Water | Scrolling wave texture and a gentle swell |
+| Pool | Slight surface bob |
 
 ## The island
 

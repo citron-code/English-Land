@@ -52,6 +52,33 @@
     scene.fogStart = 42;
     scene.fogEnd = 130;
 
+    /* Sky dome: a vertical gradient painted onto the inside of a big sphere.
+     * A flat clearColor gives a dead, posterised backdrop. Fog is disabled on
+     * it or the fog colour washes the gradient straight back out. */
+    const skyTex = new B.DynamicTexture('skyTex', { width: 8, height: 256 }, scene, true);
+    const skc = skyTex.getContext();
+    const sky = skc.createLinearGradient(0, 0, 0, 256);
+    sky.addColorStop(0.00, '#7fc4e8');     // zenith
+    sky.addColorStop(0.55, '#bfe3f0');
+    sky.addColorStop(1.00, '#e6f4f7');     // horizon haze
+    skc.fillStyle = sky;
+    skc.fillRect(0, 0, 8, 256);
+    skyTex.update();
+
+    const skyMat = new B.StandardMaterial('skyMat', scene);
+    skyMat.emissiveTexture = skyTex;
+    skyMat.diffuseColor = new B.Color3(0, 0, 0);
+    skyMat.specularColor = new B.Color3(0, 0, 0);
+    skyMat.backFaceCulling = false;
+    skyMat.disableLighting = true;
+
+    const skyDome = B.MeshBuilder.CreateSphere('skyDome',
+      { diameter: 320, segments: 16, sideOrientation: B.Mesh.BACKSIDE }, scene);
+    skyDome.material = skyMat;
+    skyDome.applyFog = false;
+    skyDome.isPickable = false;
+    skyDome.infiniteDistance = false;
+
     /* ---------------------------------------------------------------- lights */
     // Ambient has to leave headroom for the shadow to read against; too high
     // and the cast shadow fills back in and disappears.
@@ -166,6 +193,17 @@
     ROUTES.forEach((r) => stroke(r, 1.85, C.colors.pathEdge));
     ROUTES.forEach((r) => stroke(r, 1.45, C.colors.path));
     ctx.restore();
+
+    // wet sand + foam where the water meets the shore
+    ctx.strokeStyle = 'rgba(214,196,150,0.85)';
+    ctx.lineWidth = PW(0.95);
+    circle(0, 0, HALF - 0.75); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.72)';
+    ctx.lineWidth = PW(0.42);
+    circle(0, 0, HALF - 0.30); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.38)';
+    ctx.lineWidth = PW(0.22);
+    circle(0, 0, HALF - 0.62); ctx.stroke();
 
     /* Punch the island out as a disc. Everything outside becomes transparent
      * and the ground material alpha-TESTS it away, which is what gives the
@@ -315,6 +353,14 @@
      * onto small props becomes impossible. */
     const STAND_MARGIN = 0.30;
     const PLAT_BLOCK = 0.78;   // fraction of the player radius platforms block by
+    const walkways = kit.walkways || [];
+    const onWalkway = (x, z) => {
+      for (let i = 0; i < walkways.length; i++) {
+        const w = walkways[i];
+        if (Math.abs(x - w.x) < w.hw && Math.abs(z - w.z) < w.hd) return true;
+      }
+      return false;
+    };
     // the island is a disc, so the shoreline is a radius, not a box
     const limR = HALF - C.edgePad;
 
@@ -377,9 +423,10 @@
         }
       }
       }
-      // and finally the shoreline, as a radius
+      // Shoreline, as a radius - unless the point is on a walkway (the dock),
+      // which deliberately reaches out past the beach.
       const d = Math.hypot(nx, nz);
-      if (d > limR) {
+      if (d > limR && !onWalkway(nx, nz)) {
         nx = nx / d * limR; nz = nz / d * limR;
         out.solidX = out.solidZ = true;
       }
@@ -404,6 +451,30 @@
           d.mesh.rotation.y = wt * 1.6 + d.seed;
         } else if (d.kind === 'pool') {
           d.mesh.position.y = d.baseY + Math.sin(wt * 1.6) * 0.012;
+
+        } else if (d.kind === 'butterfly') {
+          /* Wander on a sum of sines - two frequencies per axis so the path
+           * never repeats obviously. Heading comes from sampling the same
+           * curve a moment ahead, so the butterfly always faces its travel. */
+          const t = wt * d.sp + d.seed;
+          const at = (u) => ({
+            x: d.home.x + Math.sin(u) * d.r1 + Math.sin(u * 2.3 + 1.1) * d.r2,
+            z: d.home.z + Math.cos(u * 1.19) * d.r1 + Math.cos(u * 2.7) * d.r2,
+            y: d.hi + Math.sin(u * 3.1) * 0.28 + Math.sin(u * 5.3) * 0.10
+          });
+          const p0 = at(t), p1 = at(t + 0.05);
+          d.node.position.set(p0.x, p0.y, p0.z);
+          d.node.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
+          d.node.rotation.x = -(p1.y - p0.y) * 1.6;
+          // wings beat fast and independently of the drift speed
+          const flap = Math.sin(wt * 17 + d.seed * 3) * 0.85 + 0.30;
+          d.wings[0].hinge.rotation.z = flap;
+          d.wings[1].hinge.rotation.z = -flap;
+
+        } else if (d.kind === 'cloud') {
+          d.node.position.x += d.sp * dt2;
+          if (d.node.position.x > 150) d.node.position.x = -150;
+          d.node.position.y += Math.sin(wt * 0.3 + d.sp) * 0.004;
         }
       }
     }
@@ -520,7 +591,8 @@
               [2.6, -9.2, 0.9, 'pine']);
     ring.forEach((t, i) => {
       if (t[3] === 'pine') k.pine(t[0], t[1], t[2], i * 0.7);
-      else k.roundTree(t[0], t[1], t[2], i * 0.9, i % 2 ? 'leafA' : 'leafB');
+      else k.roundTree(t[0], t[1], t[2], i * 0.9, i % 2 ? 'leafA' : 'leafB',
+                       i % 4 === 1 ? 'red' : (i % 7 === 3 ? 'orange' : null));
     });
 
     /* scattered flowers to lift the colour, kept off the paths */
@@ -532,6 +604,66 @@
     ];
     const cols = ['red', 'yellow', 'pink', 'purple', 'orange'];
     spots.forEach((s, i) => k.flowerBed(s[0], s[1], 0.7, 0.7, [cols[i % cols.length]]));
+
+    /* ------------------------------------------------------------ detail */
+    k.birdhouse(-3.9, 11.0, Math.PI * 0.9);
+    k.birdhouse(10.2, 3.4, Math.PI * 1.4);
+    k.hedge(-3.2, 9.6, 2.6, 0.9);
+    k.hedge(4.0, 2.6, 0.9, 2.4);
+    k.seesaw(9.0, 9.0, Math.PI * 0.35);
+    k.poolLadder(6.6, -3.9, 0);
+    k.umbrella(4.6, -6.8, 0.14);
+    k.towel(5.8, -8.3, 0.4, 'pink');
+    k.towel(3.6, -5.6, -0.3, 'blue');
+    k.tripod(-2.6, -5.4);
+    k.wheelbarrow(-6.4, 1.2, 0.7);
+    k.wateringCan(-5.2, -0.2, 0.4);
+    k.tableSet(2.9, 1.5);
+    k.bucket(6.2, 8.0, 'yellow');
+    k.bucket(-9.5, -1.9, 'red');
+
+    // pier out over the water, with a boat moored alongside
+    const dock = k.dock(0.4, -12.1, 0.0, -1.0, 7.0);
+    k.boat(2.2, -15.6, 0.35);
+    k.lamp(-1.1, -12.4);
+
+    // mushrooms, rocks and grass tufts to break up open grass
+    const detail = [
+      [-9.8, 6.2], [-6.8, 10.2], [4.2, -10.4], [-2.0, 10.6], [10.6, -2.4],
+      [-11.0, -2.4], [8.0, 2.2], [-4.0, -9.4], [6.2, -0.4], [-8.6, 4.0],
+      [2.2, 6.4], [-3.0, 0.6], [5.0, 4.2], [-10.4, 8.2], [9.2, -8.6]
+    ];
+    detail.forEach((d, i) => {
+      if (i % 3 === 0) k.mushroom(d[0], d[1], 0.9 + (i % 3) * 0.2, i % 2 ? 'red' : 'orange');
+      else if (i % 3 === 1) k.rock(d[0], d[1], 0.8 + (i % 4) * 0.22, i);
+      else k.grassTuft(d[0], d[1], 1.0);
+    });
+    for (let i = 0; i < 26; i++) {
+      const a = (i / 26) * Math.PI * 2 + 0.9;
+      const r = 5.5 + (i % 5) * 1.3;
+      const gx = Math.cos(a) * r, gz = Math.sin(a) * r;
+      if (Math.abs(gx) < 1.4) continue;              // keep the main path clear
+      k.grassTuft(gx, gz, 0.85 + (i % 3) * 0.2);
+    }
+
+    /* ------------------------------------------------- butterflies + sky */
+    /* Homes are kept clear of the house and other tall props - the wander
+     * radius is up to ~3 units and butterflies will fly into a wall. */
+    const flutter = [
+      [-8.4, 0.4], [-6.0, -1.2], [-3.8, 4.6], [3.8, 3.4], [5.2, 2.4],
+      [7.8, 3.0], [-5.4, 5.4], [1.2, -9.4], [-1.0, 6.4], [6.8, -1.4],
+      [10.0, 1.2], [-1.6, -8.6]
+    ];
+    flutter.forEach((f, i) => k.butterfly(f[0], f[1], i));
+
+    /* Kept low enough to sit near the horizon. Higher up they are simply above
+     * the frame at the camera's normal pitch and never seen. */
+    const clouds = [
+      [-42, 17, -34, 1.6], [34, 20, -50, 2.0], [-22, 15, 46, 1.7],
+      [56, 18, 20, 1.4], [10, 23, 62, 2.2], [-64, 16, 26, 1.8],
+      [72, 21, -18, 1.5], [-30, 19, 70, 1.9]
+    ];
+    clouds.forEach((c, i) => k.cloud(c[0], c[1], c[2], c[3], i));
   }
 
   global.createWorld = createWorld;

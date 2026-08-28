@@ -118,10 +118,18 @@
       kit.solid(x, z, 0.45 * s);
     };
 
-    kit.roundTree = (x, z, s, ry, leaf) => {
+    kit.roundTree = (x, z, s, ry, leaf, fruit) => {
       s = s || 1; ry = ry || 0; leaf = leaf || 'leafA';
       const t = cyl('rt', 0.24 * s, 0.32 * s, 1.25 * s, 8);
       t.position.set(x, 0.62 * s, z); add(t, 'trunk', true);
+      // a couple of root flares so the trunk doesn't just poke out of the grass
+      for (let i = 0; i < 3; i++) {
+        const a = ry + (i / 3) * Math.PI * 2;
+        const rt = sph('rrt', 0.30 * s, 6);
+        rt.scaling.set(1, 0.5, 1);
+        rt.position.set(x + Math.cos(a) * 0.17 * s, 0.06 * s, z + Math.sin(a) * 0.17 * s);
+        add(rt, 'trunk', false);
+      }
       const blobs = [[0, 1.95, 0, 1.85], [-0.45, 1.70, 0.20, 1.30],
                      [0.48, 1.72, -0.18, 1.25], [0.05, 2.45, -0.10, 1.10]];
       blobs.forEach((b, i) => {
@@ -130,6 +138,16 @@
         c.rotation.y = ry;
         add(c, i % 2 ? leaf : (leaf === 'leafA' ? 'leafB' : 'leafA'), true);
       });
+      if (fruit) {
+        for (let i = 0; i < 5; i++) {
+          const a = ry + (i / 5) * Math.PI * 2 + 0.4;
+          const f = sph('rf', 0.26 * s, 6);
+          f.position.set(x + Math.cos(a) * 0.82 * s,
+                         (1.72 + (i % 2) * 0.42) * s,
+                         z + Math.sin(a) * 0.82 * s);
+          add(f, fruit, false);
+        }
+      }
       kit.solid(x, z, 0.42 * s);
     };
 
@@ -149,6 +167,14 @@
       s = s || 1;
       const stem = cyl('fs', 0.035 * s, 0.045 * s, 0.30 * s, 5);
       stem.position.set(x, 0.15 * s, z); add(stem, 'leafA', false);
+      // a pair of leaves at the base, so flowers aren't bare sticks
+      [-1, 1].forEach((sd) => {
+        const lf = sph('fl', 1, 6);
+        lf.scaling.set(0.20 * s, 0.03 * s, 0.11 * s);
+        lf.rotation.y = sd * 0.6;
+        lf.position.set(x + sd * 0.11 * s, 0.06 * s, z + sd * 0.05 * s);
+        add(lf, 'bush', false);
+      });
       for (let i = 0; i < 5; i++) {
         const a = (i / 5) * Math.PI * 2;
         const p = sph('fp', 0.17 * s, 6);
@@ -251,10 +277,42 @@
         gl.rotation.y = ry; add(gl, 'glass', false);
       });
 
-      // step
+      // step + doormat
       const st = box('hs', 1.5, 0.16, 0.6);
       st.position.set(x + fx * 1.20, 0.08, z + fz * 1.20); st.rotation.y = ry;
       add(st, 'stone', false);
+      const mat2 = box('hm', 0.92, 0.05, 0.44);
+      mat2.position.set(x + fx * 1.20, 0.18, z + fz * 1.20); mat2.rotation.y = ry;
+      add(mat2, 'woodDark', false);
+
+      // window boxes with flowers under each window
+      [-1.45, 1.45].forEach((off) => {
+        const wx = x + fx + Math.cos(ry) * off;
+        const wz = z + fz - Math.sin(ry) * off;
+        const bx = box('hbx', 0.98, 0.24, 0.26);
+        bx.position.set(wx + Math.sin(ry) * 0.12, 1.06, wz + Math.cos(ry) * 0.12);
+        bx.rotation.y = ry; add(bx, 'wood', false);
+        ['red', 'yellow', 'pink'].forEach((c, i) => {
+          const f = sph('hbf', 0.22, 6);
+          f.scaling.y = 0.8;
+          f.position.set(wx + Math.sin(ry) * 0.12 + Math.cos(ry) * (i - 1) * 0.30,
+                         1.22, wz + Math.cos(ry) * 0.12 - Math.sin(ry) * (i - 1) * 0.30);
+          add(f, c, false);
+        });
+      });
+
+      // chimney with a stone cap
+      const chx = x - Math.sin(ry) * 0.9 + Math.cos(ry) * 1.25;
+      const chz = z - Math.cos(ry) * 0.9 - Math.sin(ry) * 1.25;
+      const ch = box('hch', 0.56, 1.5, 0.56);
+      ch.position.set(chx, Hh + 0.62, chz); ch.rotation.y = ry;
+      add(ch, 'roofDark', true);
+      const chCap = box('hcc', 0.72, 0.16, 0.72);
+      chCap.position.set(chx, Hh + 1.42, chz); chCap.rotation.y = ry;
+      add(chCap, 'stone', false);
+
+      // lantern beside the door
+      kit.lantern(x + fx * 1.04 + Math.cos(ry) * 0.95, z + fz * 1.04 - Math.sin(ry) * 0.95, ry);
 
       node.dispose();
       kit.solidBox(x, z, W / 2 + 0.25, D / 2 + 0.25);
@@ -570,6 +628,334 @@
         l.rotation.y = ry; add(l, 'metal', false);
       });
       kit.platform(x, z, 0.95, 0.32, 0.55);
+    };
+
+    /* ==================================================================
+     * Detail props
+     * ================================================================ */
+
+    kit.mushroom = (x, z, s, colour) => {
+      s = s || 1;
+      const st = cyl('mus', 0.10 * s, 0.13 * s, 0.20 * s, 6);
+      st.position.set(x, 0.10 * s, z); add(st, 'white', false);
+      const cap2 = sph('muc', 0.30 * s, 8);
+      cap2.scaling.y = 0.62;
+      cap2.position.set(x, 0.22 * s, z); add(cap2, colour || 'red', false);
+    };
+
+    kit.rock = (x, z, s, ry) => {
+      s = s || 1;
+      const r = sph('rk', 0.46 * s, 6);
+      r.scaling.set(1, 0.66, 0.86);
+      r.rotation.y = ry || 0;
+      r.position.set(x, 0.13 * s, z); add(r, 'stone', false);
+    };
+
+    // little blades poking up - cheap, and they break up flat grass a lot
+    kit.grassTuft = (x, z, s) => {
+      s = s || 1;
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.random();
+        const b = cyl('gt', 0, 0.09 * s, 0.30 * s + Math.random() * 0.12, 3);
+        b.rotation.set(Math.cos(a) * 0.28, a, Math.sin(a) * 0.28);
+        b.position.set(x + Math.cos(a) * 0.10 * s, 0.16 * s, z + Math.sin(a) * 0.10 * s);
+        add(b, i % 2 ? 'leafA' : 'bush', false);
+      }
+    };
+
+    kit.hedge = (x, z, w, d) => {
+      const h = 0.72;
+      const b = box('hg', w, h, d);
+      b.position.set(x, h / 2, z); add(b, 'pineA', true);
+      for (let i = 0; i < 8; i++) {
+        const c = sph('hgb', 0.44 + Math.random() * 0.2, 6);
+        c.scaling.y = 0.55;
+        c.position.set(x + (Math.random() - 0.5) * w, h - 0.03, z + (Math.random() - 0.5) * d);
+        add(c, i % 2 ? 'bush' : 'leafA', false);
+      }
+      kit.solidBox(x, z, w / 2 + 0.05, d / 2 + 0.05);
+    };
+
+    kit.birdhouse = (x, z, ry) => {
+      ry = ry || 0;
+      const p = cyl('bhp', 0.11, 0.13, 2.10, 8);
+      p.position.set(x, 1.05, z); add(p, 'woodDark', true);
+      const b = box('bhb', 0.52, 0.50, 0.46);
+      b.position.set(x, 2.32, z); b.rotation.y = ry; add(b, 'plank', true);
+      const roof = cyl('bhr', 0, 0.72, 0.42, 4);
+      roof.rotation.y = ry + Math.PI / 4;
+      roof.position.set(x, 2.72, z); add(roof, 'red', false);
+      const hole = cyl('bhh', 0.18, 0.18, 0.08, 10);
+      hole.rotation.set(Math.PI / 2, ry, 0);
+      hole.position.set(x + Math.sin(ry) * 0.24, 2.36, z + Math.cos(ry) * 0.24);
+      add(hole, 'trunkDark', false);
+      const perch = cyl('bhc', 0.05, 0.05, 0.18, 6);
+      perch.rotation.set(Math.PI / 2, ry, 0);
+      perch.position.set(x + Math.sin(ry) * 0.32, 2.22, z + Math.cos(ry) * 0.32);
+      add(perch, 'woodDark', false);
+      kit.solid(x, z, 0.26);
+    };
+
+    kit.seesaw = (x, z, ry) => {
+      ry = ry || 0;
+      const base = cyl('ssb', 0.24, 0.46, 0.52, 8);
+      base.position.set(x, 0.26, z); add(base, 'metal', true);
+      const plank = box('ssp', 0.42, 0.14, 3.10);
+      plank.rotation.set(0.16, ry, 0);
+      plank.position.set(x, 0.60, z); add(plank, 'yellow', true);
+      [-1, 1].forEach((sd) => {
+        const seat = box('sss', 0.46, 0.10, 0.44);
+        seat.rotation.y = ry;
+        seat.position.set(x + Math.sin(ry) * sd * 1.35,
+                          0.60 - sd * Math.sin(0.16) * 1.35 + 0.10,
+                          z + Math.cos(ry) * sd * 1.35);
+        add(seat, sd > 0 ? 'red' : 'blue', false);
+        const grip = cyl('ssg', 0.07, 0.07, 0.34, 6);
+        grip.rotation.set(0, ry, Math.PI / 2);
+        grip.position.set(x + Math.sin(ry) * sd * 1.05,
+                          0.60 - sd * Math.sin(0.16) * 1.05 + 0.34,
+                          z + Math.cos(ry) * sd * 1.05);
+        add(grip, 'metal', false);
+      });
+      kit.solid(x, z, 0.40);
+    };
+
+    kit.poolLadder = (x, z, ry) => {
+      ry = ry || 0;
+      [-0.26, 0.26].forEach((o) => {
+        const r = cyl('pld', 0.07, 0.07, 0.95, 8);
+        r.position.set(x + Math.cos(ry) * o, 0.62, z - Math.sin(ry) * o);
+        add(r, 'metal', false);
+      });
+      const bar = cyl('plb', 0.07, 0.07, 0.52, 8);
+      bar.rotation.set(0, ry, Math.PI / 2);
+      bar.position.set(x, 1.06, z); add(bar, 'metal', false);
+    };
+
+    kit.umbrella = (x, z, tilt) => {
+      const p = cyl('ump', 0.09, 0.11, 2.30, 8);
+      p.rotation.z = tilt || 0.12;
+      p.position.set(x, 1.15, z); add(p, 'white', true);
+      const top = cyl('umt', 0.10, 2.60, 0.62, 10);
+      top.rotation.z = tilt || 0.12;
+      top.position.set(x - (tilt || 0.12) * 2.0, 2.28, z);
+      add(top, 'red', true);
+      const rim = B.MeshBuilder.CreateTorus('umr',
+        { diameter: 2.52, thickness: 0.10, tessellation: 12 }, scene);
+      rim.rotation.z = tilt || 0.12;
+      rim.position.set(x - (tilt || 0.12) * 2.0, 2.02, z);
+      add(rim, 'white', false);
+      kit.solid(x, z, 0.24);
+    };
+
+    kit.towel = (x, z, ry, colour) => {
+      const t = box('tw', 1.30, 0.06, 0.80);
+      t.rotation.y = ry || 0;
+      t.position.set(x, 0.03, z); add(t, colour || 'pink', false);
+      const s2 = box('tws', 1.10, 0.03, 0.16);
+      s2.rotation.y = ry || 0;
+      s2.position.set(x, 0.07, z); add(s2, 'white', false);
+    };
+
+    kit.tripod = (x, z) => {
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2;
+        const l = cyl('tpl', 0.07, 0.08, 1.60, 6);
+        l.rotation.set(Math.cos(a) * 0.30, 0, Math.sin(a) * 0.30);
+        l.position.set(x + Math.cos(a) * 0.24, 0.78, z + Math.sin(a) * 0.24);
+        add(l, 'woodDark', false);
+      }
+      const pot = cyl('tpp', 0.52, 0.42, 0.42, 10);
+      pot.position.set(x, 0.72, z); add(pot, 'metal', true);
+      const rim = B.MeshBuilder.CreateTorus('tpr',
+        { diameter: 0.56, thickness: 0.07, tessellation: 12 }, scene);
+      rim.rotation.x = Math.PI / 2;
+      rim.position.set(x, 0.93, z); add(rim, 'metal', false);
+    };
+
+    kit.wheelbarrow = (x, z, ry) => {
+      ry = ry || 0;
+      const tub = box('wbt', 0.72, 0.42, 1.05);
+      tub.rotation.set(-0.12, ry, 0);
+      tub.position.set(x, 0.48, z); add(tub, 'blue', true);
+      const wheel = cyl('wbw', 0.46, 0.46, 0.16, 12);
+      wheel.rotation.set(0, ry, Math.PI / 2);
+      wheel.position.set(x + Math.sin(ry) * 0.62, 0.23, z + Math.cos(ry) * 0.62);
+      add(wheel, 'trunkDark', false);
+      [-0.28, 0.28].forEach((o) => {
+        const h = cyl('wbh', 0.07, 0.07, 1.10, 6);
+        h.rotation.set(Math.PI / 2 - 0.18, ry, 0);
+        h.position.set(x - Math.sin(ry) * 0.55 + Math.cos(ry) * o, 0.44,
+                       z - Math.cos(ry) * 0.55 - Math.sin(ry) * o);
+        add(h, 'woodDark', false);
+      });
+      kit.solid(x, z, 0.46);
+    };
+
+    kit.wateringCan = (x, z, ry) => {
+      ry = ry || 0;
+      const b = cyl('wcb', 0.40, 0.46, 0.46, 10);
+      b.position.set(x, 0.23, z); add(b, 'teal', true);
+      const spout = cyl('wcs', 0.10, 0.16, 0.60, 7);
+      spout.rotation.set(0, ry, 1.05);
+      spout.position.set(x + Math.cos(ry) * 0.34, 0.34, z - Math.sin(ry) * 0.34);
+      add(spout, 'teal', false);
+      const handle = B.MeshBuilder.CreateTorus('wch',
+        { diameter: 0.34, thickness: 0.06, tessellation: 10 }, scene);
+      handle.rotation.set(0, ry, Math.PI / 2);
+      handle.position.set(x - Math.cos(ry) * 0.16, 0.52, z + Math.sin(ry) * 0.16);
+      add(handle, 'teal', false);
+    };
+
+    // plates and cups on the picnic table
+    kit.tableSet = (x, z) => {
+      const tY = 0.83;
+      [[0.34, 0.20, 'white'], [-0.36, 0.12, 'white'], [0.02, -0.36, 'white']].forEach((p) => {
+        const pl = cyl('tsp', 0.34, 0.30, 0.05, 10);
+        pl.position.set(x + p[0], tY, z + p[1]); add(pl, p[2], false);
+      });
+      [[0.16, 0.40, 'red'], [-0.30, -0.16, 'yellow'], [0.38, -0.16, 'blue']].forEach((p) => {
+        const c = cyl('tsc', 0.16, 0.13, 0.20, 8);
+        c.position.set(x + p[0], tY + 0.10, z + p[1]); add(c, p[2], false);
+      });
+      const jug = cyl('tsj', 0.22, 0.28, 0.36, 10);
+      jug.position.set(x - 0.05, tY + 0.18, z + 0.02); add(jug, 'orange', false);
+    };
+
+    kit.bucket = (x, z, colour) => {
+      const b = cyl('bk', 0.34, 0.26, 0.34, 10);
+      b.position.set(x, 0.17, z); add(b, colour || 'yellow', false);
+      const h = B.MeshBuilder.CreateTorus('bkh',
+        { diameter: 0.34, thickness: 0.04, tessellation: 10 }, scene);
+      h.rotation.z = Math.PI / 2;
+      h.position.set(x, 0.34, z); add(h, colour || 'yellow', false);
+    };
+
+    kit.lantern = (x, z, ry) => {
+      ry = ry || 0;
+      const arm = cyl('lna', 0.06, 0.06, 0.34, 6);
+      arm.rotation.set(Math.PI / 2, ry, 0);
+      arm.position.set(x, 2.05, z); add(arm, 'metal', false);
+      const body = box('lnb', 0.26, 0.30, 0.26);
+      body.position.set(x, 1.88, z); add(body, 'metal', false);
+      const glow = sph('lng', 0.20, 8);
+      glow.position.set(x, 1.88, z);
+      glow.material = mat('lampGlow', PALETTE.yellow, { emissive: 1.0 });
+      glow.isPickable = false;
+      kit.meshes.push(glow);
+    };
+
+    /* Pier out over the water, plus a rowboat. `walkway` lets the player past
+     * the shoreline clamp so the dock is somewhere to actually go. */
+    kit.dock = (x, z, dirX, dirZ, len) => {
+      const wdt = 1.9;
+      const n = Math.round(len / 1.6);
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n;
+        const px = x + dirX * len * t, pz = z + dirZ * len * t;
+        [-1, 1].forEach((sd) => {
+          const post = cyl('dkp', 0.16, 0.18, 1.5, 7);
+          post.position.set(px - dirZ * sd * (wdt / 2 - 0.14), -0.35,
+                            pz + dirX * sd * (wdt / 2 - 0.14));
+          add(post, 'woodDark', false);
+        });
+      }
+      for (let i = 0; i < n * 3; i++) {
+        const t = (i + 0.5) / (n * 3);
+        const px = x + dirX * len * t, pz = z + dirZ * len * t;
+        // near-flush planks; big gaps make the pier read as a ladder
+        const pk = box('dkb', wdt, 0.14, len / (n * 3) * 0.97);
+        pk.rotation.y = Math.atan2(dirX, dirZ);
+        pk.position.set(px, 0.12, pz);
+        add(pk, i % 2 ? 'wood' : 'woodDark', true);
+      }
+      const cx = x + dirX * len / 2, cz = z + dirZ * len / 2;
+      kit.platform(cx, cz, Math.abs(dirX) * len / 2 + Math.abs(dirZ) * wdt / 2,
+                   Math.abs(dirZ) * len / 2 + Math.abs(dirX) * wdt / 2, 0.19);
+      kit.walkways = kit.walkways || [];
+      kit.walkways.push({ x: cx, z: cz,
+        hw: Math.abs(dirX) * len / 2 + Math.abs(dirZ) * wdt / 2 + 0.4,
+        hd: Math.abs(dirZ) * len / 2 + Math.abs(dirX) * wdt / 2 + 0.4 });
+      return { endX: x + dirX * len, endZ: z + dirZ * len };
+    };
+
+    kit.boat = (x, z, ry) => {
+      ry = ry || 0;
+      const hull = sph('btH', 1, 10);
+      hull.scaling.set(0.80, 0.42, 2.10);
+      hull.rotation.y = ry;
+      hull.position.set(x, -0.28, z); add(hull, 'red', true);
+      // inner recess sits lower and narrower, so the hull reads as a rim
+      const inner = sph('btI', 1, 10);
+      inner.scaling.set(0.58, 0.30, 1.70);
+      inner.rotation.y = ry;
+      inner.position.set(x, -0.26, z); add(inner, 'plank', false);
+      [-0.5, 0.5].forEach((o) => {
+        const seat = box('btS', 0.78, 0.09, 0.28);
+        seat.rotation.y = ry;
+        seat.position.set(x + Math.sin(ry) * o, -0.16, z + Math.cos(ry) * o);
+        add(seat, 'wood', false);
+      });
+      const oar = cyl('btO', 0.07, 0.07, 1.70, 6);
+      oar.rotation.set(0.1, ry + 0.5, 1.35);
+      oar.position.set(x + 0.3, -0.05, z); add(oar, 'woodDark', false);
+    };
+
+    /* ------------------------------------------------------- butterflies */
+    const wingCols = ['yellow', 'pink', 'blue', 'orange', 'purple', 'white'];
+    kit.butterfly = (x, z, i) => {
+      const node = new B.TransformNode('bfly' + i, scene);
+      const col = wingCols[i % wingCols.length];
+
+      const body = cyl('bfb', 0.045, 0.055, 0.28, 6);
+      body.rotation.x = Math.PI / 2;
+      body.material = mats.trunkDark;
+      body.parent = node; body.isPickable = false;
+
+      const wings = [];
+      [-1, 1].forEach((side) => {
+        const hinge = new B.TransformNode('bfh', scene);
+        hinge.parent = node;
+        const w = sph('bfw', 1, 6);
+        w.scaling.set(0.30, 0.02, 0.22);
+        w.position.x = side * 0.16;
+        w.material = mats[col];
+        w.parent = hinge; w.isPickable = false;
+        const w2 = sph('bfw2', 1, 6);
+        w2.scaling.set(0.20, 0.02, 0.15);
+        w2.position.set(side * 0.13, 0, -0.15);
+        w2.material = mats[col];
+        w2.parent = hinge; w2.isPickable = false;
+        wings.push({ hinge, side });
+      });
+
+      kit.dynamic.push({
+        kind: 'butterfly', node, wings,
+        home: { x, z },
+        seed: i * 1.77,
+        r1: 1.1 + (i % 4) * 0.45,
+        r2: 0.5 + (i % 3) * 0.30,
+        sp: 0.32 + (i % 5) * 0.06,
+        hi: 0.75 + (i % 4) * 0.22
+      });
+    };
+
+    /* ------------------------------------------------------------ clouds */
+    kit.cloud = (x, y, z, s, i) => {
+      const node = new B.TransformNode('cloud' + i, scene);
+      node.position.set(x, y, z);
+      const puffs = [[0, 0, 0, 2.4], [-1.5, -0.25, 0.3, 1.7], [1.6, -0.2, -0.2, 1.9],
+                     [0.5, 0.55, 0.4, 1.6], [-0.7, 0.4, -0.4, 1.4]];
+      puffs.forEach((p, j) => {
+        const c = sph('cp' + j, p[3] * s, 6);
+        c.scaling.y = 0.62;
+        c.position.set(p[0] * s, p[1] * s, p[2] * s);
+        c.material = mat('cloud', '#ffffff', { emissive: 0.55 });
+        c.parent = node;
+        c.isPickable = false;
+        c.applyFog = false;
+      });
+      kit.dynamic.push({ kind: 'cloud', node, sp: 0.22 + (i % 3) * 0.09 });
     };
 
     return kit;
