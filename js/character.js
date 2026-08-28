@@ -123,18 +123,27 @@
       seed:  20260828
     },
 
+    // contact shadow blob: the shadow map alone leaves the figure hovering
+    contact: { on: true, w: 0.68, d: 0.50, alpha: 0.85 },
+
+    /* Neighbouring parts need a value break or they merge into one mass:
+     * shirtSh separates cuffs/collar from the shirt, and trouser is lifted off
+     * shoe so the ankle reads instead of the leg ending in a black blob. */
     colors: {
-      skin:   '#d59a6b',
-      skinSh: '#c98a5c',
-      hair:   '#191920',
-      shirt:  '#f5f4f0',
-      dark:   '#17171b',
-      sole:   '#fbfbf7',
-      eye:    '#2b1d13',
-      spark:  '#f6f2ec',
-      nose:   '#e08a4e',
-      mouth:  '#7a4d3a',
-      silver: '#c2c2c9'
+      skin:    '#d59a6b',
+      skinSh:  '#c98a5c',
+      hair:    '#191920',
+      shirt:   '#f5f4f0',
+      shirtSh: '#dedcd4',
+      tie:     '#17171b',
+      trouser: '#262631',
+      shoe:    '#121216',
+      sole:    '#fbfbf7',
+      eye:     '#2b1d13',
+      spark:   '#f6f2ec',
+      nose:    '#e08a4e',
+      mouth:   '#7a4d3a',
+      silver:  '#c2c2c9'
     }
   };
 
@@ -147,19 +156,26 @@
       m.specularPower = power;
       return m;
     };
-    return {
-      skin:   mk('skin',   colors.skin,   0.05, 56),
-      skinSh: mk('skinSh', colors.skinSh, 0.04, 48),
-      hair:   mk('hair',   colors.hair,   0.20, 22),
-      shirt:  mk('shirt',  colors.shirt,  0.06, 44),
-      dark:   mk('dark',   colors.dark,   0.08, 44),
-      sole:   mk('sole',   colors.sole,   0.06, 44),
-      eye:    mk('eye',    colors.eye,    0.50, 110),
-      spark:  mk('spark',  colors.spark,  0.65, 128),
-      nose:   mk('nose',   colors.nose,   0.05, 44),
-      mouth:  mk('mouth',  colors.mouth,  0.05, 44),
-      silver: mk('silver', colors.silver, 0.75, 128)
+    const m = {
+      skin:    mk('skin',    colors.skin,    0.05, 56),
+      skinSh:  mk('skinSh',  colors.skinSh,  0.04, 48),
+      hair:    mk('hair',    colors.hair,    0.20, 22),
+      shirt:   mk('shirt',   colors.shirt,   0.06, 44),
+      shirtSh: mk('shirtSh', colors.shirtSh, 0.05, 40),
+      tie:     mk('tie',     colors.tie,     0.08, 44),
+      trouser: mk('trouser', colors.trouser, 0.07, 40),
+      shoe:    mk('shoe',    colors.shoe,    0.10, 50),
+      sole:    mk('sole',    colors.sole,    0.06, 44),
+      eye:     mk('eye',     colors.eye,     0.50, 110),
+      spark:   mk('spark',   colors.spark,   0.65, 128),
+      nose:    mk('nose',    colors.nose,    0.05, 44),
+      mouth:   mk('mouth',   colors.mouth,   0.05, 44),
+      silver:  mk('silver',  colors.silver,  0.75, 128)
     };
+    // Displacing the hair vertices flips the winding on a few crown triangles.
+    // Culled, those read as holes straight through the head to the background.
+    m.hair.backFaceCulling = false;
+    return m;
   }
 
   /* -------------------------------------------------------------------- hair
@@ -197,10 +213,18 @@
       const n = v.scale(1 / len);
       const az = Math.atan2(n.x, n.z);
 
+      /* Fade the azimuthal noise out toward the pole. A UV sphere stacks many
+       * coincident vertices there and `az` is undefined at that point, so each
+       * duplicate takes a different displacement, pulls apart from its twins
+       * and tears visible holes in the crown. Anything keyed on `az` must go
+       * to zero as the vertices converge. */
+      const horiz = Math.sqrt(Math.max(0, 1 - n.y * n.y));   // 0 at the pole
+      const amp   = Math.min(1, horiz / 0.30);
+
       // faceting stays radial, so the shell keeps hugging the skull
       const r = len
-        + lobe(az * 1.0 + n.y * 1.6) * H.lobe
-        + wave(az * 1.7 + n.y * 3.0) * H.facet;
+        + (lobe(az * 1.0 + n.y * 1.6) * H.lobe
+        +  wave(az * 1.7 + n.y * 3.0) * H.facet) * amp;
       let   x = n.x * r;
       let   y = n.y * r;
       let   z = n.z * r + H.back;
@@ -471,19 +495,24 @@
     const torsoPivot = new B.TransformNode('torsoPivot', scene);
     torsoPivot.parent = root;
 
-    const torsoBody = cyl('torsoBody', T.topR * 2, T.botR * 2, tH, 24);
+    // body and caps share a radial count, or the joins scallop visibly
+    const TSEG = 24;
+    const torsoBody = cyl('torsoBody', T.topR * 2, T.botR * 2, tH, TSEG);
     torsoBody.material = mats.shirt;
     torsoBody.parent = torsoPivot;
     torsoBody.position.y = T.yBot + tH / 2;
 
-    const torsoTop = sph('torsoTop', T.topR * 2, 20);
+    // Caps are a touch larger than the body. At equal radius their surfaces are
+    // coincident with the cylinder rim and z-fight into a dashed scallop.
+    const CAP = 1.03;
+    const torsoTop = sph('torsoTop', T.topR * 2 * CAP, TSEG);
     torsoTop.scaling.y = 0.55;
     torsoTop.material = mats.shirt;
     torsoTop.parent = torsoPivot;
     torsoTop.position.y = T.yTop;
 
     // shallow hem: a deep rounded bottom reads as a dress and swallows the legs
-    const torsoBot = sph('torsoBot', T.botR * 2, 20);
+    const torsoBot = sph('torsoBot', T.botR * 2 * CAP, TSEG);
     torsoBot.scaling.y = T.hemSquash;
     torsoBot.material = mats.shirt;
     torsoBot.parent = torsoPivot;
@@ -498,15 +527,23 @@
     // sit a chest detail on the surface, sunk `embed` deep so no seam shows
     const onChest = (y, embed) => V3(0, y, torsoR(y) - (embed || 0.012));
 
-    /* collar */
+    /* Collar: a band flaring from the neck out to the shoulders, plus two
+     * points forming a V around the knot. Two loose tabs on the chest read as
+     * notches cut in the shirt rather than as a collar. */
+    const bandY = T.yTop - 0.004;
+    const band = cyl('collarBand', C.neck.r * 2.35, T.topR * 1.24, 0.044, 24);
+    band.material = mats.shirtSh;
+    band.parent = torsoPivot;
+    band.position.y = bandY;
+
     [-1, 1].forEach((side) => {
-      const y = T.yTop - 0.018;
-      const c = box('collar' + (side < 0 ? 'L' : 'R'), 0.105, 0.080, 0.026);
-      c.material = mats.shirt;
-      c.parent = torsoPivot;
-      c.position.set(side * 0.068, y, torsoR(y) - 0.030);
-      c.rotation.z = side * deg(34);
-      c.rotation.x = deg(14);
+      const y = T.yTop - 0.052;
+      const pt = box('collarPt' + (side < 0 ? 'L' : 'R'), 0.052, 0.115, 0.026);
+      pt.material = mats.shirt;
+      pt.parent = torsoPivot;
+      pt.position.set(side * 0.055, y, torsoR(y) - 0.012);
+      pt.rotation.z = side * deg(20);
+      pt.rotation.x = deg(10);
     });
 
     /* Necktie. Three separate boxes at fixed depths visibly step apart as the
@@ -514,7 +551,7 @@
      * the chest at whatever radius the torso has at each height. */
     const knotY = T.yTop - 0.048;
     const knot = box('tieKnot', 0.072, 0.076, 0.046);
-    knot.material = mats.dark;
+    knot.material = mats.tie;
     knot.parent = torsoPivot;
     knot.position.copyFrom(onChest(knotY, 0.014));
     knot.rotation.x = deg(6);
@@ -538,7 +575,7 @@
     const blade = B.MeshBuilder.CreateRibbon('tieBlade', {
       pathArray: [edgeL, edgeR], sideOrientation: B.Mesh.DOUBLESIDE
     }, scene);
-    blade.material = mats.dark;
+    blade.material = mats.tie;
     blade.parent = torsoPivot;
 
     /* ---------------------------------------------------------------- arms */
@@ -562,11 +599,18 @@
       sleeve.parent = pivot;
       sleeve.position.y = -A.len / 2;
 
+      // Cuff: white-on-white, the sleeve otherwise merges with the torso into
+      // one shape. A slightly shaded band gives the arm an edge to end on.
+      const cuff = cyl('cuff' + tag, A.r * 2.20, A.r * 2.24, 0.042, 16);
+      cuff.material = mats.shirtSh;
+      cuff.parent = pivot;
+      cuff.position.y = -A.len + 0.014;
+
       const hand = sph('hand' + tag, C.hand.r * 2, 14);
       hand.scaling.set(1, 0.92, 0.95);
       hand.material = mats.skin;
       hand.parent = pivot;
-      hand.position.y = -A.len - 0.012;
+      hand.position.y = -A.len - 0.028;
       return pivot;
     };
     const armL = mkArm(-1), armR = mkArm(1);
@@ -584,9 +628,16 @@
       pivot.position.set(side * C.hip.x, 0, 0);
 
       const pant = cap('pant' + tag, L.r, L.len);
-      pant.material = mats.dark;
+      pant.material = mats.trouser;
       pant.parent = pivot;
       pant.position.y = -L.len / 2;
+
+      // turned-up hem: gives the trouser a visible end instead of dissolving
+      // into the shoe, which is nearly the same value
+      const hem = cyl('hem' + tag, L.r * 2.16, L.r * 2.10, 0.038, 16);
+      hem.material = mats.trouser;
+      hem.parent = pivot;
+      hem.position.y = -L.len + 0.052;
 
       /* High-top sneaker, leg-local: white rubber sole wrapping a black canvas
        * upper, with a white toe cap. Rounded volumes throughout - a flat slab
@@ -596,7 +647,7 @@
       // black canvas upper, rounded and slightly longer than it is wide
       const upper = sph('shoeUpper' + tag, 1, 16);
       upper.scaling.set(S.w, S.h * 1.10, S.d);
-      upper.material = mats.dark;
+      upper.material = mats.shoe;
       upper.parent = pivot;
       upper.position.set(0, ankleY + S.h * 0.34, S.toeOut);
 
@@ -618,7 +669,7 @@
       const collar = B.MeshBuilder.CreateTorus('shoeAnkle' + tag, {
         diameter: L.r * 2.30, thickness: 0.034, tessellation: 14
       }, scene);
-      collar.material = mats.dark;
+      collar.material = mats.shoe;
       collar.parent = pivot;
       collar.rotation.x = deg(86);
       collar.position.set(0, ankleY + S.h * 0.86, S.toeOut - S.d * 0.16);
@@ -640,6 +691,44 @@
     });
     // drop the rig so the lowest point (sole) rests exactly on y = 0
     root.position.y -= minY;
+
+    /* Contact shadow. The shadow map gives a soft blob but no darkening where
+     * the soles actually meet the ground, which reads as hovering. This is a
+     * radial-gradient decal pinned under the feet.
+     * Built AFTER `meshes` is captured so it is neither a shadow caster nor
+     * part of the silhouette measurement. */
+    if (C.contact.on) {
+      const TEX = 256;
+      const dt = new B.DynamicTexture('contactTex', { width: TEX, height: TEX }, scene, false);
+      // Painted as a LUMINANCE ramp, not black-with-alpha: opacityTexture reads
+      // brightness, so a black gradient is uniformly transparent and invisible.
+      const g2 = dt.getContext();
+      const grad = g2.createRadialGradient(TEX / 2, TEX / 2, 0, TEX / 2, TEX / 2, TEX / 2);
+      grad.addColorStop(0.00, '#ffffff');
+      grad.addColorStop(0.28, '#e0e0e0');
+      grad.addColorStop(0.62, '#6a6a6a');
+      grad.addColorStop(1.00, '#000000');
+      g2.fillStyle = grad;
+      g2.fillRect(0, 0, TEX, TEX);
+      dt.update();
+      dt.getAlphaFromRGB = true;
+
+      const cmat = new B.StandardMaterial('contactMat', scene);
+      cmat.disableLighting = true;                 // it IS the shading
+      cmat.diffuseColor = B.Color3.Black();
+      cmat.emissiveColor = B.Color3.Black();
+      cmat.opacityTexture = dt;
+      cmat.alpha = C.contact.alpha;
+
+      const blob = B.MeshBuilder.CreateGround('contactShadow', {
+        width: C.contact.w, height: C.contact.d
+      }, scene);
+      blob.material = cmat;
+      blob.parent = root;
+      blob.position.y = 0.004 - root.position.y;   // pin to the ground plane
+      blob.isPickable = false;
+      blob.receiveShadows = false;
+    }
 
     return {
       root, headPivot, torsoPivot, hipPivot,

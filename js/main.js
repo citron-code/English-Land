@@ -27,6 +27,10 @@
       'cam', Math.PI / 2, 1.25, H * 2.35, new B.Vector3(0, H * 0.56, 0), scene
     );
     camera.attachControl(canvas, true);
+    // Default minZ is 1.0, which slices the top off the model on close or
+    // overhead shots and looks exactly like holes in the mesh.
+    camera.minZ = 0.05;
+    camera.maxZ = 400;
     camera.lowerRadiusLimit = H * 1.2;
     camera.upperRadiusLimit = H * 4.5;
     camera.lowerBetaLimit = 0.12;
