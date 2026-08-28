@@ -369,6 +369,15 @@
 
     const root = new B.TransformNode('character', scene);
 
+    /* Everything above the hips hangs off bodyPivot, which sits AT hip height.
+     * Walk lean and torso twist rotate this, so the upper body swings about
+     * the waist and the feet stay planted. Rotating root instead tips the
+     * whole figure, soles included. */
+    const bodyPivot = new B.TransformNode('bodyPivot', scene);
+    bodyPivot.parent = root;
+    bodyPivot.position.y = C.hip.y;
+    const upperY = (y) => y - C.hip.y;      // world height -> bodyPivot-local
+
     const box = (n, w, h, d) => B.MeshBuilder.CreateBox(n, { width: w, height: h, depth: d }, scene);
     const sph = (n, d, seg) => B.MeshBuilder.CreateSphere(n, { diameter: d, segments: seg || 18 }, scene);
     const cap = (n, r, len) => B.MeshBuilder.CreateCapsule(n, {
@@ -380,8 +389,8 @@
 
     /* ------------------------------------------------------------ head rig */
     const headPivot = new B.TransformNode('headPivot', scene);
-    headPivot.parent = root;
-    headPivot.position.y = C.head.y;              // everything below is head-local
+    headPivot.parent = bodyPivot;
+    headPivot.position.y = upperY(C.head.y);      // everything below is head-local
 
     const head = sph('head', C.head.r * 2, 24);
     head.scaling.set(C.head.sx, C.head.sy, C.head.sz);
@@ -486,14 +495,15 @@
     /* ---------------------------------------------------------------- neck */
     const neck = cyl('neck', C.neck.r * 2, C.neck.r * 2.15, C.neck.h, 16);
     neck.material = mats.skinSh;
-    neck.parent = root;
-    neck.position.y = C.neck.y;
+    neck.parent = bodyPivot;
+    neck.position.y = upperY(C.neck.y);
 
     /* --------------------------------------------------------- torso/shirt */
     const T = C.torso;
     const tH = T.yTop - T.yBot;
     const torsoPivot = new B.TransformNode('torsoPivot', scene);
-    torsoPivot.parent = root;
+    torsoPivot.parent = bodyPivot;
+    torsoPivot.position.y = -C.hip.y;      // its children use world-height Y
 
     // body and caps share a radial count, or the joins scallop visibly
     const TSEG = 24;
@@ -583,8 +593,8 @@
     const mkArm = (side) => {
       const tag = side < 0 ? 'L' : 'R';
       const pivot = new B.TransformNode('armPivot' + tag, scene);
-      pivot.parent = root;
-      pivot.position.set(side * A.xPivot, A.yPivot, 0);
+      pivot.parent = bodyPivot;
+      pivot.position.set(side * A.xPivot, upperY(A.yPivot), 0);
       pivot.rotation.z = side * -deg(A.outDeg);
       pivot.rotation.x = deg(A.fwdDeg);
 
@@ -697,6 +707,7 @@
      * radial-gradient decal pinned under the feet.
      * Built AFTER `meshes` is captured so it is neither a shadow caster nor
      * part of the silhouette measurement. */
+    let contactBlob = null;
     if (C.contact.on) {
       const TEX = 256;
       const dt = new B.DynamicTexture('contactTex', { width: TEX, height: TEX }, scene, false);
@@ -728,13 +739,16 @@
       blob.position.y = 0.004 - root.position.y;   // pin to the ground plane
       blob.isPickable = false;
       blob.receiveShadows = false;
+      contactBlob = blob;
     }
 
     return {
-      root, headPivot, torsoPivot, hipPivot,
+      root, bodyPivot, headPivot, torsoPivot, hipPivot,
       armL, armR, legL, legR,
       cfg: C, mats, meshes,
       height: maxY - minY,
+      groundOffset: root.position.y,      // root Y that rests the soles on 0
+      contact: contactBlob,
       parts: { head, hair, eyeL, eyeR, nose, mouth, neck, torsoBody }
     };
   }
