@@ -98,8 +98,11 @@
      * All roughness uses coherent angular noise, so neighbouring vertices move
      * together and the silhouette waves. Per-vertex randomness shatters it. */
     hair: {
-      shell: 0.026, crown: 0.088, crownPow: 1.0, slice: 0.64,
+      shell: 0.026, crown: 0.078, crownPow: 1.0, slice: 0.64,
       segments: 14, back: -0.010,
+      // soft ceiling: everything above `from` is compressed toward it, so the
+      // crown reads as a broad dome instead of coming to a point
+      flat:  { from: 0.200, squash: 0.55 },
       // Two noise scales: lobe gives broad mass variation so the head isn't a
       // moulded dome, facet gives the low-poly faceting on top. Keep lobe
       // small - at 0.03 it stacks with the crown into a witch-hat peak.
@@ -177,6 +180,10 @@
     const lobe = (a) => Math.sin(a * 2 + q1) * 0.62 + Math.sin(a * 3 + q2) * 0.38;
     const n01  = (v) => (v + 1) / 2;
 
+    // compress the crown toward a ceiling so the top stays broad, not pointed
+    const flatten = (y) =>
+      y > H.flat.from ? H.flat.from + (y - H.flat.from) * H.flat.squash : y;
+
     const rr = R + H.shell;                 // concentric with the skull
     const cap = B.MeshBuilder.CreateSphere('hairCap', {
       diameter: 2 * rr, segments: H.segments, slice: H.slice
@@ -208,6 +215,8 @@
       x += H.sweep.x * top;
       z += H.sweep.z * top;
 
+      y = flatten(y);
+
       // hairline: lift front vertices onto an arc that dips centrally, fading
       // out around the temples so the back and sides stay covered
       const t  = Math.min(1, Math.abs(x) / rr);
@@ -228,7 +237,7 @@
     const capSurface = (dir) => {
       const d = dir.normalizeToNew();
       return V3(d.x * rr,
-                d.y * rr + H.crown * Math.pow(Math.max(0, d.y), H.crownPow),
+                flatten(d.y * rr + H.crown * Math.pow(Math.max(0, d.y), H.crownPow)),
                 d.z * rr + H.back);
     };
 
@@ -272,9 +281,10 @@
       if (dir.z > 0.40 && dir.y < 0.45) continue;      // don't grow over the face
       const len   = H.tufts.len[0] + rng() * (H.tufts.len[1] - H.tufts.len[0]);
       const baseR = H.tufts.r[0]   + rng() * (H.tufts.r[1]   - H.tufts.r[0]);
-      // sweep the tips up and back so it reads as styled hair, not a hedgehog
-      const point = dir.add(V3(0, 0.22, -0.30)).normalize();
-      addChunk(dir, point, len, baseR, 4, 0.55, 0.45);
+      // lay the tips back rather than up: pointing them upward re-introduces
+      // the peak the crown ceiling is there to remove
+      const point = dir.add(V3(0, 0.04, -0.42)).normalize();
+      addChunk(dir, point, len, baseR, 4, 0.45, 0.40);
     }
 
     /* The fringe is carved into the shell edge itself (see the hairline arc
