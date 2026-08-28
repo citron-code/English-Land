@@ -196,7 +196,11 @@
       camTarget.x += (p.x - camTarget.x) * Math.min(1, C.camera.lag * dt);
       camTarget.z += (p.z - camTarget.z) * Math.min(1, C.camera.lag * dt);
       camTarget.y += (ty  - camTarget.y) * Math.min(1, C.camera.lag * dt);
-      camera.setTarget(camTarget);
+      /* Write the pivot directly. setTarget() PRESERVES the camera position and
+       * back-solves alpha/beta/radius to match, so using it on a follow camera
+       * drags the orbit angles every time the player moves - spawning away from
+       * the origin alone was enough to wrench the view nearly overhead. */
+      camera.target.copyFrom(camTarget);
 
       return speed;
     }
