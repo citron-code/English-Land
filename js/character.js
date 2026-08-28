@@ -80,7 +80,9 @@
       // a protruding sphere reads as a bead glued to the face
       eye:  { w: 0.095, h: 0.118, d: 0.055, x: 0.090, y: 0.020, inset: 0.014,
               tiltDeg: 3, yawDeg: 9,
-              spark: { d: 0.030, x: -0.019, y: 0.031, flat: 0.35 } },
+              // x/y are fractions of the eye's half-width/height, so the
+              // highlight stays put if the eye is resized
+              spark: { d: 0.022, fx: -0.30, fy: 0.42, flat: 0.32 } },
       brow: { w: 0.082, h: 0.016, d: 0.026, y: 0.093, tiltDeg: 8 },
       nose: { r: 0.031, h: 0.046, y: -0.038, thin: 0.55 },
       mouth:{ w: 0.090, lift: 0.021, y: -0.106, r: 0.0080 },
@@ -96,12 +98,24 @@
      * All roughness uses coherent angular noise, so neighbouring vertices move
      * together and the silhouette waves. Per-vertex randomness shatters it. */
     hair: {
-      shell: 0.026, crown: 0.108, slice: 0.64, segments: 12, back: -0.010,
-      facet: 0.017,          // coherent radial wobble -> low-poly faceting
+      shell: 0.026, crown: 0.088, crownPow: 1.0, slice: 0.64,
+      segments: 14, back: -0.010,
+      // Two noise scales: lobe gives broad mass variation so the head isn't a
+      // moulded dome, facet gives the low-poly faceting on top. Keep lobe
+      // small - at 0.03 it stacks with the crown into a witch-hat peak.
+      lobe:  0.014,
+      facet: 0.019,
       rimWave: 0.042,        // points around the lower edge
+      // a slight parting direction; too much and the hairline goes off-axis
+      sweep: { x: 0.007, z: 0.004 },
       // hairline: y at the temples, dip lowers it centrally, wave roughens it
-      cut:   { y: 0.126, dip: 0.040, wave: 0.019, sideReach: 0.38 },
-      tufts: { count: 6, len: [0.040, 0.078], r: [0.060, 0.100] },
+      cut:   { y: 0.128, dip: 0.038, wave: 0.024, sideReach: 0.38 },
+      tufts: { count: 4, len: [0.035, 0.065], r: [0.050, 0.085] },
+      /* Locks only where they read as hair. Across the temples they project
+       * past the silhouette as black blades, so that arc is left to the shell. */
+      fringeLocks: { count: 6, spreadDeg: 118, len: [0.026, 0.044], w: [0.030, 0.052] },
+      napeLocks:   { count: 14, len: [0.050, 0.115], w: [0.038, 0.070],
+                     elevDeg: -20, backOf: -0.20 },
       burns: { len: 0.052, r: 0.038 },
       seed:  20260828
     },
@@ -156,8 +170,12 @@
      * near-identical values, so the surface facets and the rim waves. Feeding
      * rng() per vertex instead is what shattered the old rim into shards. */
     const p1 = rng() * 6.283, p2 = rng() * 6.283, p3 = rng() * 6.283;
+    const q1 = rng() * 6.283, q2 = rng() * 6.283;
     const wave = (a) =>
       Math.sin(a * 3 + p1) * 0.55 + Math.sin(a * 5 + p2) * 0.30 + Math.sin(a * 9 + p3) * 0.15;
+    // lower frequency: broad lumps of mass rather than surface facets
+    const lobe = (a) => Math.sin(a * 2 + q1) * 0.62 + Math.sin(a * 3 + q2) * 0.38;
+    const n01  = (v) => (v + 1) / 2;
 
     const rr = R + H.shell;                 // concentric with the skull
     const cap = B.MeshBuilder.CreateSphere('hairCap', {
@@ -173,14 +191,22 @@
       const az = Math.atan2(n.x, n.z);
 
       // faceting stays radial, so the shell keeps hugging the skull
-      const r = len + wave(az * 1.7 + n.y * 3.0) * H.facet;
-      const x = n.x * r;
+      const r = len
+        + lobe(az * 1.0 + n.y * 1.6) * H.lobe
+        + wave(az * 1.7 + n.y * 3.0) * H.facet;
+      let   x = n.x * r;
       let   y = n.y * r;
-      const z = n.z * r + H.back;
+      let   z = n.z * r + H.back;
 
       // Crown volume: raise the top only. Scaling XZ instead would push the
       // shell off the sides of the head and expose a brim underneath.
-      y += H.crown * Math.pow(Math.max(0, n.y), 1.4);
+      y += H.crown * Math.pow(Math.max(0, n.y), H.crownPow);
+
+      // Sweep the mass off to one side, strongest at the crown, so the hair
+      // has a parting direction instead of being perfectly radial.
+      const top = Math.pow(Math.max(0, n.y), 1.2);
+      x += H.sweep.x * top;
+      z += H.sweep.z * top;
 
       // hairline: lift front vertices onto an arc that dips centrally, fading
       // out around the temples so the back and sides stay covered
@@ -202,8 +228,16 @@
     const capSurface = (dir) => {
       const d = dir.normalizeToNew();
       return V3(d.x * rr,
-                d.y * rr + H.crown * Math.pow(Math.max(0, d.y), 1.4),
+                d.y * rr + H.crown * Math.pow(Math.max(0, d.y), H.crownPow),
                 d.z * rr + H.back);
+    };
+
+    // height of the carved hairline at a given x, for seating the fringe
+    const hairlineAt = (x) => {
+      const zz = Math.sqrt(Math.max(0.0001, rr * rr - x * x));
+      const t  = Math.min(1, Math.abs(x) / rr);
+      return H.cut.y - (1 - t * t) * H.cut.dip
+             + wave(Math.atan2(x, zz) * 2.0) * H.cut.wave;
     };
 
     /* ------------------------------------------- chunky tuft / spike helper */
@@ -243,17 +277,48 @@
       addChunk(dir, point, len, baseR, 4, 0.55, 0.45);
     }
 
-    /* The fringe is now carved into the shell edge itself (see the hairline
-     * arc above), not bolted on as separate cones - those read as fangs. */
+    /* The fringe is carved into the shell edge itself (see the hairline arc
+     * above), not bolted on as separate cones - those read as fangs.
+     *
+     * Locks break up the moulded-dome silhouette, but only where they read as
+     * hair. Across the temples they project past the outline as black blades,
+     * so that arc is left to the shell alone. */
 
-    /* Sideburns: seated just forward of the ear and angled down the temple.
-     * Kept small and tucked - out at the equator they protrude past the hair
-     * silhouette and read as black wings sticking off the head. */
-    [-1, 1].forEach((side) => {
-      const dir = V3(side * 0.94, 0.22, 0.30).normalize();
-      addChunk(dir, V3(side * 0.16, -1, 0.10).normalize(),
-               H.burns.len, H.burns.r, 4, 0.35, 0.08);
-    });
+    /* short strands off the hairline, so the fringe edge isn't a clean arc */
+    const FL = H.fringeLocks;
+    const fSpread = deg(FL.spreadDeg);
+    for (let i = 0; i < FL.count; i++) {
+      const f = FL.count === 1 ? 0.5 : i / (FL.count - 1);
+      const theta = -fSpread / 2 + f * fSpread;
+      const x  = Math.sin(theta) * rr * 0.88;
+      const z  = Math.sqrt(Math.max(0.0001, rr * rr - x * x)) * 0.90 + H.back;
+      const len = FL.len[0] + n01(wave(theta * 5.0)) * (FL.len[1] - FL.len[0]);
+      const w   = FL.w[0]   + n01(lobe(theta * 4.0)) * (FL.w[1]   - FL.w[0]);
+      // down and slightly forward; short enough to clear the eyes
+      const point = V3((x / rr) * 0.30, -1, 0.26).normalize();
+      addChunkAt(V3(x, hairlineAt(x) + 0.014, z), point, len, w, 3, 0.70, 0.15);
+    }
+
+    /* longer, shaggier locks down the back of the head */
+    const NL = H.napeLocks;
+    for (let i = 0; i < NL.count; i++) {
+      const az = (i / NL.count) * Math.PI * 2;
+      const dx = Math.sin(az), dz = Math.cos(az);
+      if (dz > NL.backOf) continue;                      // back arc only
+
+      const elev = deg(NL.elevDeg + wave(az * 2.2) * 8);
+      const dir  = V3(dx * Math.cos(elev), Math.sin(elev), dz * Math.cos(elev));
+      const len  = NL.len[0] + n01(wave(az * 3.0 + 0.7)) * (NL.len[1] - NL.len[0]);
+      const w    = NL.w[0]   + n01(lobe(az * 2.0))       * (NL.w[1]   - NL.w[0]);
+
+      // hang close to the skull - splaying outward turns them into spikes
+      const point = V3(dx * 0.12, -1, dz * 0.12).normalize();
+      addChunkAt(capSurface(dir), point, len, w, 3, 0.55, 0.12);
+    }
+
+    /* No separate sideburn chunks: seated out at the temples they always
+     * protrude past the hair silhouette as black wings, whatever the size.
+     * The shell's own hairline already carries the hair down past the temple. */
 
     const hair = B.Mesh.MergeMeshes(pieces, true, true, undefined, false, false);
     hair.name = 'hair';
@@ -312,11 +377,18 @@
 
       // Flattened and offset to the same side on BOTH eyes, so the highlight
       // reads as one light source rather than a cross-eyed pair of beads.
+      // Projected ONTO the eyeball's curved surface - at a fixed z it floats
+      // clear of the eye and reads as a dot stuck on the face.
       const S = F.eye.spark;
+      const sx = S.fx * (F.eye.w / 2);
+      const sy = S.fy * (F.eye.h / 2);
+      const k  = Math.max(0, 1 - S.fx * S.fx - S.fy * S.fy);
+      const sz = (F.eye.d / 2) * Math.sqrt(k);      // ellipsoid surface depth
+
       const spark = sph('eyeSpark' + (side < 0 ? 'L' : 'R'), S.d, 10);
       spark.scaling.z = S.flat;
       spark.material = mats.spark;
-      spark.position.set(S.x, S.y, F.eye.d * 0.5 - S.d * 0.5 * S.flat + 0.004);
+      spark.position.set(sx, sy, sz);               // straddles the surface
       spark.parent = g;
       return g;
     };
