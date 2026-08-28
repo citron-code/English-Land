@@ -59,6 +59,15 @@
     const onKey = (e, down) => {
       // don't hijack browser shortcuts
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // emote keys fire on the press edge and are not held state
+      const emoteName = global.EMOTE_KEYS && global.EMOTE_KEYS[e.code];
+      if (emoteName) {
+        if (down && !keys[e.code] && enabled) animator.play(emoteName);
+        keys[e.code] = down;
+        e.preventDefault();
+        return;
+      }
+
       const known = Object.values(CODES).some((list) => list.includes(e.code));
       if (!known) return;
       // buffer the press edge, so a jump pressed a hair early still fires
@@ -121,6 +130,7 @@
       if (enabled && bufferT > 0 && coyoteT > 0 && !jumpLatch) {
         vy = C.jumpSpeed;
         grounded = false;
+        animator.stopEmote();       // leaving the ground cancels any emote
         jumpLatch = true;       // held Space must not re-fire on landing
         bufferT = 0;
         coyoteT = 0;

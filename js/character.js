@@ -70,7 +70,10 @@
     // len is tuned so the hands land at hip height, level with the shirt hem
     arm:   { r: 0.068, len: 0.302, xPivot: 0.216, yPivot: 0.912,
              outDeg: 8, fwdDeg: 3, shoulderMul: 1.85 },
-    hand:  { r: 0.082 },
+    /* thumbPoseX is the arm pitch the thumbs-up emote uses. The thumb is
+     * counter-rotated by exactly this, so at that pose it points straight up
+     * in world space. Change one and the other follows. */
+    hand:  { r: 0.082, thumbR: 0.030, thumbLen: 0.090, thumbPoseX: -1.85 },
     hip:   { y: 0.620, x: 0.102 },
     leg:   { r: 0.082, len: 0.455 },
     shoe:  { w: 0.178, h: 0.165, d: 0.315, toeOut: 0.058, soleT: 0.062 },
@@ -590,6 +593,7 @@
 
     /* ---------------------------------------------------------------- arms */
     const A = C.arm;
+    const thumbs = {};
     const mkArm = (side) => {
       const tag = side < 0 ? 'L' : 'R';
       const pivot = new B.TransformNode('armPivot' + tag, scene);
@@ -621,6 +625,28 @@
       hand.material = mats.skin;
       hand.parent = pivot;
       hand.position.y = -A.len - 0.028;
+
+      /* Thumb for the thumbs-up emote, hidden the rest of the time - these are
+       * mitten hands and a permanent thumb would read oddly at rest.
+       * Parented to the arm pivot, not the hand, so it doesn't inherit the
+       * hand's non-uniform scaling. */
+      const thumb = B.MeshBuilder.CreateCapsule('thumb' + tag, {
+        radius: C.hand.thumbR, height: C.hand.thumbLen, tessellation: 10
+      }, scene);
+      thumb.material = mats.skin;
+      thumb.parent = pivot;
+      // `up` is the pivot-local direction that becomes world-up once the arm is
+      // pitched to thumbPoseX. Offsetting along it by more than the hand radius
+      // is what keeps the thumb from sitting buried inside the fist.
+      const tp = -C.hand.thumbPoseX;
+      const up = V3(0, Math.cos(tp), Math.sin(tp));
+      const reach = C.hand.r * 0.95 + C.hand.thumbLen * 0.30;
+      thumb.position.copyFrom(
+        V3(side * 0.028, -A.len - 0.028, 0).add(up.scale(reach)));
+      thumb.rotation.x = tp;                    // cancels the emote's arm pitch
+      thumb.isVisible = false;
+      thumbs[side < 0 ? 'L' : 'R'] = thumb;
+
       return pivot;
     };
     const armL = mkArm(-1), armR = mkArm(1);
@@ -746,7 +772,7 @@
 
     return {
       root, bodyPivot, headPivot, torsoPivot, hipPivot,
-      armL, armR, legL, legR,
+      armL, armR, legL, legR, thumbs,
       cfg: C, mats, meshes,
       height: maxY - minY,
       groundOffset: root.position.y,      // root Y that rests the soles on 0

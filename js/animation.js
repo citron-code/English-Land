@@ -83,6 +83,9 @@
     let stretchAt = rnd(C.stretch.after), stretchT = -1;
     // landing recoil
     let landT = 0, wasAir = false;
+    // emote layer
+    let emote = null, emoteT = 0;
+    const pose = {};
 
     function setEyeLids(k) {
       char.parts.eyeL.scaling.y = k;
@@ -222,6 +225,52 @@
         char.headPivot.rotation.z = -char.bodyPivot.rotation.y * 0.35
                                   + idleAmt * Math.sin(t * 0.8) * 0.020;
 
+        /* -------------------------------------------------- emote overlay
+         * Applied last, as a weighted lerp toward the emote's targets, so it
+         * layers over the walk/idle pose instead of replacing it. */
+        let emoteRootY = 0;
+        let showThumbR = false;
+        if (emote) {
+          emoteT += dt;
+          const E = global.EMOTES[emote];
+          if (emoteT >= E.dur) {
+            emote = null;
+          } else {
+            const u = emoteT / E.dur;
+            // ease in at the start, out at the end, full weight between
+            const wIn  = Math.min(1, emoteT / E.easeIn);
+            const wOut = Math.min(1, (E.dur - emoteT) / E.easeOut);
+            const w = Math.min(wIn, wOut);
+            const ease = w * w * (3 - 2 * w);          // smoothstep
+
+            for (const k in pose) delete pose[k];
+            E.pose(u, pose, char);
+
+            const mix = (node, axis, key) => {
+              if (pose[key] === undefined) return;
+              node.rotation[axis] += (pose[key] - node.rotation[axis]) * ease;
+            };
+            mix(char.armL, 'x', 'armLX'); mix(char.armL, 'y', 'armLY'); mix(char.armL, 'z', 'armLZ');
+            mix(char.armR, 'x', 'armRX'); mix(char.armR, 'y', 'armRY'); mix(char.armR, 'z', 'armRZ');
+            mix(char.headPivot, 'x', 'headX');
+            mix(char.headPivot, 'y', 'headY');
+            mix(char.headPivot, 'z', 'headZ');
+            mix(char.bodyPivot, 'x', 'bodyX');
+            mix(char.bodyPivot, 'y', 'bodyY');
+            mix(char.bodyPivot, 'z', 'bodyZ');
+            if (pose.rootY) emoteRootY = pose.rootY * ease;
+            // the thumb only makes sense once the arm is actually up
+            if (pose.thumbR && ease > 0.45) showThumbR = true;
+            if (pose.lookUp) {
+              char.headPivot.rotation.x += (-0.16 - char.headPivot.rotation.x) * ease * 0.5;
+            }
+          }
+        }
+        if (char.thumbs) {
+          if (char.thumbs.R) char.thumbs.R.isVisible = showThumbR;
+          if (char.thumbs.L) char.thumbs.L.isVisible = false;
+        }
+
         /* ------------------------------------------- height, squash, shadow */
         const bob = (Math.abs(Math.sin(phase)) * W.bob * amp
                    + idleAmt * breathe * C.idle.breathe
@@ -232,7 +281,7 @@
         const sq = landT > 0 ? (landT / C.air.land.dur) * C.air.land.squash : 0;
         char.root.scaling.y = 1 - sq;
         char.root.scaling.x = char.root.scaling.z = 1 + sq * 0.45;
-        char.root.position.y = baseY * (1 - sq) + bob + airY;
+        char.root.position.y = baseY * (1 - sq) + bob + airY + emoteRootY;
 
         /* The decal is unparented, so it is placed here. It tightens and fades
          * with height, which is what sells the character leaving the ground. */
@@ -249,6 +298,11 @@
       /* park the rig in a clean neutral pose (used for screenshots) */
       rest() {
         blend = 0; phase = 0; t = 0; air = 0; landT = 0; stillFor = 0;
+        emote = null; emoteT = 0;
+        if (char.thumbs) {
+          if (char.thumbs.L) char.thumbs.L.isVisible = false;
+          if (char.thumbs.R) char.thumbs.R.isVisible = false;
+        }
         curYaw = curPitch = lookYaw = lookPitch = 0;
         shiftCur = shiftTo = 0;
         stretchT = -1; blinkT = -1; blinkWait = rnd(C.blink.every);
@@ -266,6 +320,23 @@
           contact.scaling.set(1, 1, 1);
           contact.material.alpha = contactAlpha;
         }
+      },
+
+      /* ------------------------------------------------------------ emotes */
+      play(name) {
+        if (!global.EMOTES[name]) return false;
+        emote = name; emoteT = 0;
+        stillFor = 0;                 // an emote counts as activity
+        if (stretchT >= 0) { stretchT = -1; stretchAt = rnd(C.stretch.after); }
+        return true;
+      },
+      stopEmote() { emote = null; },
+      get emote() { return emote; },
+      /* hold an emote at a fixed progress, for screenshots */
+      poseEmote(name, u) {
+        if (!global.EMOTES[name]) return false;
+        emote = name; emoteT = global.EMOTES[name].dur * u;
+        return true;
       },
 
       /* dev helpers: force a behaviour now, for screenshots */

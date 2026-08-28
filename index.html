@@ -32,6 +32,10 @@
     }
     .keys .sep { width: 1px; height: 16px; background: rgba(0,0,0,.12); }
 
+    /* second row, above the movement hints */
+    .keys.emotes { bottom: 66px; gap: 14px; }
+    .keys.emotes span { display: inline-flex; align-items: center; gap: 4px; }
+
     #loading {
       position: fixed; inset: 0; display: grid; place-items: center;
       color: #4a6570; font-size: 13px; letter-spacing: .04em; background: #cfe6ef;
@@ -59,7 +63,16 @@
     <span class="sep"></span>
     <span><kbd>Space</kbd> jump</span>
     <span class="sep"></span>
-    <span>drag to orbit &middot; scroll to zoom</span>
+    <span>drag to orbit</span>
+  </div>
+
+  <div class="keys emotes">
+    <span><kbd>Z</kbd> wave</span>
+    <span><kbd>X</kbd> thumbs up</span>
+    <span><kbd>C</kbd> clap</span>
+    <span><kbd>V</kbd> yes</span>
+    <span><kbd>Q</kbd> no</span>
+    <span><kbd>E</kbd> think</span>
   </div>
 
   <div id="loading">loading&hellip;</div>
@@ -67,6 +80,7 @@
   <script src="lib/babylon.js"></script>
   <script src="js/character.js"></script>
   <script src="js/world.js"></script>
+  <script src="js/emotes.js"></script>
   <script src="js/animation.js"></script>
   <script src="js/player.js"></script>
   <script src="js/main.js"></script>

@@ -16,7 +16,8 @@ No build step, no server needed. Open `index.html` in a modern browser
 | `index.html` | Page shell + on-screen HUD |
 | `js/character.js` | Procedural low-poly villager built from Babylon primitives. All proportions and colours live in `DEFAULTS`. |
 | `js/world.js` | Square grass platform, lighting rig, shadow generator |
-| `js/animation.js` | Procedural idle + walk cycle |
+| `js/emotes.js` | Emote pose table (one entry per emote) |
+| `js/animation.js` | Procedural idle + walk cycle, plus the emote layer |
 | `js/player.js` | Input, camera-relative movement, platform clamping |
 | `js/main.js` | Bootstrap, camera, render loop, dev capture hook |
 | `lib/babylon.js` | Vendored Babylon.js (UMD build) so the demo is self-contained |
@@ -31,6 +32,23 @@ No build step, no server needed. Open `index.html` in a modern browser
 | `Space` | Jump |
 | Drag | Orbit the camera |
 | Scroll | Zoom |
+
+### Emotes
+
+| Key | Emote |
+| --- | --- |
+| `Z` | Wave (hello / goodbye) |
+| `X` | Thumbs up (good job) |
+| `C` | Clap (well done) |
+| `V` | Nod - yes |
+| `Q` | Shake - no |
+| `E` | Think (hand on chin) |
+
+Emotes are defined in `js/emotes.js` as a target pose for a given progress
+`u` (0..1). The animator lerps the rig toward those targets by an eased
+envelope, so an emote layers over whatever the character is already doing
+rather than replacing it. To add one, add an entry to the `EMOTES` table with
+a `key` - the keybinding map is built from the table itself.
 
 ## Tweaking the character
 
