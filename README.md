@@ -15,7 +15,8 @@ No build step, no server needed. Open `index.html` in a modern browser
 | --- | --- |
 | `index.html` | Page shell + on-screen HUD |
 | `js/character.js` | Procedural low-poly villager built from Babylon primitives. All proportions and colours live in `DEFAULTS`. |
-| `js/world.js` | Square grass platform, lighting rig, shadow generator |
+| `js/props.js` | Prop library - trees, house, playground, pool, fences, flowers |
+| `js/world.js` | The island: painted ground, water, lighting, camp layout, collision |
 | `js/emotes.js` | Emote pose table (one entry per emote) |
 | `js/animation.js` | Procedural idle + walk cycle, plus the emote layer |
 | `js/player.js` | Input, camera-relative movement, platform clamping |
@@ -74,3 +75,38 @@ createCharacter(scene, {
    occasional stretch, each on its own irregular timer so they never sync up.
    Jump has coyote time, an input buffer, air control, a landing squash, and a
    contact shadow that tightens and fades with height.
+4. **Emotes** - six, on `Z X C V Q E`.
+5. **The base camp island** - house, garden, playground, pool, paths, and a
+   ring of trees on a round island in open water.
+
+## The island
+
+The ground is a single mesh with one painted 1024-square texture holding the
+grass, checker, sand beach, dirt patches and every path. Painting the paths
+costs no geometry and no draw calls, and the layout can be rearranged without
+touching a mesh. The island's round silhouette is an alpha cutout in that same
+texture rather than custom geometry.
+
+Props are static, so they are merged by material after placement - a few
+hundred small meshes become about 30 draw calls.
+
+### Collision
+
+`world.js` exposes two queries that `player.js` drives:
+
+| Query | Meaning |
+| --- | --- |
+| `groundAt(x, z, y)` | height of the surface under a point |
+| `resolve(x, z, y, r, out)` | push a circle out of anything solid |
+
+Props register as either **solid** (trees, house, fences, table - these always
+block) or **platform** (crates, stumps, benches, sandbox rim, pool edge, slide
+steps - these only block while you are *below* their top, so you can jump onto
+them and stand there).
+
+Two details make jumping onto things feel right. A platform's standing
+footprint is inflated by more than its side-blocking radius, otherwise there is
+a dead band where you have cleared the block but cannot land yet. And velocity
+is only cancelled against permanently solid things - cancelling it against a
+platform scrubs off your forward speed on the face while you rise, and you can
+never get on top.

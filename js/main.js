@@ -39,6 +39,7 @@
     camera.panningSensibility = 0;         // no panning: the player is the subject
 
     world.shadow.getShadowMap().renderList.push(...char.meshes);
+    world.top.receiveShadows = true;
 
     /* -------------------------------------------------------- post-processing */
     try {
@@ -53,8 +54,16 @@
     const speedEl = document.getElementById('speed');
     let hudT = 0;
 
+    player.teleport(world.spawn.x, world.spawn.z);
+
+    // capture() calls scene.render(), which fires this observer, which re-aims
+    // the camera at the player - overriding whatever the capture asked for.
+    let capturing = false;
+
     scene.onBeforeRenderObservable.add(() => {
+      if (capturing) return;
       const dt = engine.getDeltaTime() / 1000;
+      world.update(dt);
       const speed = player.update(dt);
 
       hudT += dt;
@@ -83,6 +92,7 @@
     window.EL = {
       scene, engine, camera, char, world, player,
       capture(alpha, beta, radiusMul, targetY, w, h, focus) {
+        capturing = true;
         canvas.style.width = w + 'px';
         canvas.style.height = h + 'px';
         engine.setSize(w, h);
@@ -102,8 +112,10 @@
 
         scene.render();
         scene.render();
-        return { png: canvas.toDataURL('image/png'),
-                 cam: { a: camera.alpha, b: camera.beta, r: camera.radius } };
+        const out = { png: canvas.toDataURL('image/png'),
+                      cam: { a: camera.alpha, b: camera.beta, r: camera.radius } };
+        capturing = false;
+        return out;
       },
       /* freeze the rig in neutral for clean model shots */
       rest() { player.setEnabled(false); player.animator.rest(); scene.render(); },

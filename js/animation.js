@@ -286,10 +286,13 @@
         /* The decal is unparented, so it is placed here. It tightens and fades
          * with height, which is what sells the character leaving the ground. */
         if (contact) {
+          // surfaceY is whatever the character is standing over - the island,
+          // or the top of a crate. Height above THAT is what fades the decal.
+          const surf = st.surfaceY || 0;
           contact.position.x = char.root.position.x;
           contact.position.z = char.root.position.z;
-          contact.position.y = 0.004;
-          const k = 1 / (1 + Math.max(0, airY) * 1.7);
+          contact.position.y = surf + 0.006;
+          const k = 1 / (1 + Math.max(0, airY - surf) * 1.7);
           contact.scaling.x = contact.scaling.z = k;
           contact.material.alpha = contactAlpha * k;
         }

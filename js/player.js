@@ -16,7 +16,7 @@
     accel:     14,      // ground acceleration, units/s^2
     decel:     18,
     turnRate:  11,      // radians/s toward the travel direction
-    edgePad:   0.55,    // keep this far from the platform rim
+    radius:    0.34,    // collision radius
 
     /* jumpSpeed^2 / (2 * gravity) = apex height, currently ~0.81 units against
      * a 1.4-unit character, with about 0.7s of air time. */
@@ -89,6 +89,7 @@
     const camTarget = new B.Vector3(0, char.height * C.camera.height, 0);
     const fwd = new B.Vector3();
     const right = new B.Vector3();
+    const hit = { x: 0, z: 0 };
 
     function update(dt) {
       // clamp dt: a background tab resumes with a huge delta and teleports you
@@ -136,22 +137,44 @@
         coyoteT = 0;
       }
 
+      /* Horizontal first, so the vertical solve runs against the position the
+       * character actually ended up at. */
+      const p = char.root.position;
+      const wantX = p.x + vx * dt;
+      const wantZ = p.z + vz * dt;
+
+      // Push out of anything solid, and off any platform whose top is above
+      // the feet. Velocity is zeroed only on the axis that actually got
+      // corrected, so sliding along a wall still works.
+      world.resolve(wantX, wantZ, airY, C.radius, hit);
+      // Velocity is killed only against permanently solid things. Against a
+      // platform you are merely below, position is clamped but speed is kept -
+      // otherwise you scrub off all forward motion on the face while rising
+      // and can never land on top of anything.
+      if (hit.solidX && Math.abs(hit.x - wantX) > 1e-4) vx = 0;
+      if (hit.solidZ && Math.abs(hit.z - wantZ) > 1e-4) vz = 0;
+      p.x = hit.x;
+      p.z = hit.z;
+
+      /* Ground height varies now: props are standable. Query it at the
+       * resolved position so walking off a crate starts a fall. */
+      const gy = world.groundAt(p.x, p.z, airY);
+      if (grounded) {
+        if (gy > airY + 0.001 && gy - airY <= 0.22) {
+          airY = gy;                       // step up a curb
+        } else if (gy < airY - 0.02) {
+          grounded = false;                // walked off an edge
+          vy = 0;
+        } else {
+          airY = gy;
+        }
+      }
       if (!grounded) {
         vy -= C.gravity * dt;
         airY += vy * dt;
-        if (airY <= 0) { airY = 0; vy = 0; grounded = true; }
+        const land = world.groundAt(p.x, p.z, airY);
+        if (vy <= 0 && airY <= land) { airY = land; vy = 0; grounded = true; }
       }
-
-      const p = char.root.position;
-      p.x += vx * dt;
-      p.z += vz * dt;
-
-      // keep the player on the platform
-      const b = world.bounds, pad = C.edgePad;
-      if (p.x < b.minX + pad) { p.x = b.minX + pad; vx = 0; }
-      if (p.x > b.maxX - pad) { p.x = b.maxX - pad; vx = 0; }
-      if (p.z < b.minZ + pad) { p.z = b.minZ + pad; vz = 0; }
-      if (p.z > b.maxZ - pad) { p.z = b.maxZ - pad; vz = 0; }
 
       // turn to face travel; shortest arc so it never spins the long way round
       const speed = Math.hypot(vx, vz);
@@ -163,10 +186,13 @@
       }
       char.root.rotation.y = facing;
 
-      animator.update(dt, speed, C.runSpeed, { airY, vy, airborne: !grounded });
+      animator.update(dt, speed, C.runSpeed, {
+        airY, vy, airborne: !grounded,
+        surfaceY: world.groundAt(p.x, p.z, airY)
+      });
 
       // camera follows at a lag, so it eases rather than sticking rigidly
-      const ty = char.height * C.camera.height;
+      const ty = char.height * C.camera.height + airY;
       camTarget.x += (p.x - camTarget.x) * Math.min(1, C.camera.lag * dt);
       camTarget.z += (p.z - camTarget.z) * Math.min(1, C.camera.lag * dt);
       camTarget.y += (ty  - camTarget.y) * Math.min(1, C.camera.lag * dt);
@@ -185,8 +211,9 @@
       teleport(x, z) {
         char.root.position.x = x;
         char.root.position.z = z;
-        camTarget.set(x, char.height * C.camera.height, z);
-        vx = 0; vz = 0; vy = 0; airY = 0; grounded = true;
+        airY = world.groundAt(x, z, 99);
+        camTarget.set(x, char.height * C.camera.height + airY, z);
+        vx = 0; vz = 0; vy = 0; grounded = true;
       },
       dispose() {
         window.removeEventListener('keydown', kd);
