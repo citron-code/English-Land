@@ -28,6 +28,7 @@ No build step, no server needed. Open `index.html` in a modern browser
 | --- | --- |
 | `W` `A` `S` `D` / arrows | Move (relative to the camera) |
 | `Shift` | Run |
+| `Space` | Jump |
 | Drag | Orbit the camera |
 | Scroll | Zoom |
 
@@ -51,3 +52,7 @@ createCharacter(scene, {
    WASD movement with acceleration and shortest-arc turning, and a procedural
    walk cycle whose phase advances with *distance travelled* so the feet stay in
    step at any speed and never skate.
+3. **Idle life and jumping** - blinking, glancing around, weight shifts and an
+   occasional stretch, each on its own irregular timer so they never sync up.
+   Jump has coyote time, an input buffer, air control, a landing squash, and a
+   contact shadow that tightens and fades with height.

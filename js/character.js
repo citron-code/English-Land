@@ -735,8 +735,10 @@
         width: C.contact.w, height: C.contact.d
       }, scene);
       blob.material = cmat;
-      blob.parent = root;
-      blob.position.y = 0.004 - root.position.y;   // pin to the ground plane
+      // Deliberately NOT parented to root: the rig bobs, squashes on landing
+      // and leaves the ground on a jump, none of which the ground decal should
+      // inherit. The animator drives its position instead.
+      blob.position.set(root.position.x, 0.004, root.position.z);
       blob.isPickable = false;
       blob.receiveShadows = false;
       contactBlob = blob;

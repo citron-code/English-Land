@@ -60,9 +60,10 @@
       hudT += dt;
       if (speedEl && hudT > 0.1) {
         hudT = 0;
-        speedEl.textContent = speed < 0.05
-          ? 'idle'
-          : (speed > player.cfg.walkSpeed + 0.3 ? 'running' : 'walking');
+        speedEl.textContent = player.airborne
+          ? 'in the air'
+          : (speed < 0.05 ? 'idle'
+            : (speed > player.cfg.walkSpeed + 0.3 ? 'running' : 'walking'));
       }
     });
 

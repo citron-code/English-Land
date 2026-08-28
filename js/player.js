@@ -17,6 +17,14 @@
     decel:     18,
     turnRate:  11,      // radians/s toward the travel direction
     edgePad:   0.55,    // keep this far from the platform rim
+
+    /* jumpSpeed^2 / (2 * gravity) = apex height, currently ~0.81 units against
+     * a 1.4-unit character, with about 0.7s of air time. */
+    jumpSpeed:  4.6,
+    gravity:    13.0,
+    airControl: 0.55,   // fraction of ground accel available in the air
+    coyote:     0.10,   // grace period to still jump just after walking off
+    jumpBuffer: 0.14,   // press registered this early still fires on landing
     camera: {
       height: 0.62,     // fraction of character height the camera looks at
       lag:    9         // how quickly the camera target chases the player
@@ -33,13 +41,18 @@
     let facing = char.root.rotation.y;
     let enabled = true;
 
+    // vertical state
+    let airY = 0, vy = 0, grounded = true;
+    let coyoteT = 0, bufferT = 0, jumpLatch = false;
+
     /* ------------------------------------------------------------- input */
     const CODES = {
       forward: ['KeyW', 'ArrowUp'],
       back:    ['KeyS', 'ArrowDown'],
       left:    ['KeyA', 'ArrowLeft'],
       right:   ['KeyD', 'ArrowRight'],
-      run:     ['ShiftLeft', 'ShiftRight']
+      run:     ['ShiftLeft', 'ShiftRight'],
+      jump:    ['Space']
     };
     const held = (name) => CODES[name].some((c) => keys[c]);
 
@@ -48,7 +61,12 @@
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const known = Object.values(CODES).some((list) => list.includes(e.code));
       if (!known) return;
+      // buffer the press edge, so a jump pressed a hair early still fires
+      if (down && !keys[e.code] && CODES.jump.includes(e.code)) bufferT = C.jumpBuffer;
       keys[e.code] = down;
+      // releasing jump re-arms it; without this, holding Space bounces
+      if (!down && CODES.jump.includes(e.code)) jumpLatch = false;
+      // Space scrolls the page and arrows scroll/move focus
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
     };
     const kd = (e) => onKey(e, true);
@@ -89,11 +107,30 @@
 
       const top = held('run') ? C.runSpeed : C.walkSpeed;
       const tx = dx * top, tz = dz * top;
-      const rate = mag > 0 ? C.accel : C.decel;
+      let rate = mag > 0 ? C.accel : C.decel;
+      if (!grounded) rate *= C.airControl;      // less authority mid-air
       const k = Math.min(1, rate * dt / Math.max(top, 0.001));
       vx += (tx - vx) * k;
       vz += (tz - vz) * k;
-      if (Math.hypot(vx, vz) < 0.02) { vx = 0; vz = 0; }
+      if (grounded && Math.hypot(vx, vz) < 0.02) { vx = 0; vz = 0; }
+
+      /* ------------------------------------------------------------ jump */
+      coyoteT = grounded ? C.coyote : Math.max(0, coyoteT - dt);
+      bufferT = Math.max(0, bufferT - dt);
+
+      if (enabled && bufferT > 0 && coyoteT > 0 && !jumpLatch) {
+        vy = C.jumpSpeed;
+        grounded = false;
+        jumpLatch = true;       // held Space must not re-fire on landing
+        bufferT = 0;
+        coyoteT = 0;
+      }
+
+      if (!grounded) {
+        vy -= C.gravity * dt;
+        airY += vy * dt;
+        if (airY <= 0) { airY = 0; vy = 0; grounded = true; }
+      }
 
       const p = char.root.position;
       p.x += vx * dt;
@@ -116,7 +153,7 @@
       }
       char.root.rotation.y = facing;
 
-      animator.update(dt, speed, C.runSpeed);
+      animator.update(dt, speed, C.runSpeed, { airY, vy, airborne: !grounded });
 
       // camera follows at a lag, so it eases rather than sticking rigidly
       const ty = char.height * C.camera.height;
@@ -132,12 +169,14 @@
       update, animator, cfg: C,
       get speed() { return Math.hypot(vx, vz); },
       get moving() { return Math.hypot(vx, vz) > 0.05; },
+      get airborne() { return !grounded; },
+      get airY() { return airY; },
       setEnabled(v) { enabled = v; if (!v) { vx = 0; vz = 0; } },
       teleport(x, z) {
         char.root.position.x = x;
         char.root.position.z = z;
         camTarget.set(x, char.height * C.camera.height, z);
-        vx = 0; vz = 0;
+        vx = 0; vz = 0; vy = 0; airY = 0; grounded = true;
       },
       dispose() {
         window.removeEventListener('keydown', kd);
