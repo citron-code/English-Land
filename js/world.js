@@ -18,24 +18,29 @@
   const B = global.BABYLON;
 
   const DEFAULTS = {
-    size: 28,            // island is size x size
-    beach: 2.6,          // sand border width
+    size: 32,            // island is size x size
+    beach: 2.8,          // sand border width
     grassH: 0.40,
     soilH: 1.60,
     soilInset: 1.1,
-    edgePad: 1.5,        // playable area stops this far inside the rim
+    edgePad: 2.3,        // stop on flat beach, before the shore starts falling
     colors: {
       sky:       '#bfe3f0',
       grass:     '#8fc861',
       grassAlt:  '#83bd57',
       grassEdge: '#78b04e',
+      grassHigh: '#98d068',    // upper terrace, a touch brighter
+      cliff:     '#e0b479',    // sandstone terrace face
+      cliffDark: '#c9985f',
       sand:      '#f0e0ae',
       sandDark:  '#e3d199',
       path:      '#dcc189',
       pathEdge:  '#cbae76',
       dirt:      '#c9a878',
       soil:      '#8a6a4a',
+      riverBed:  '#cbb98d',
       water:     '#3fa9d4',
+      river:     '#48b6dd',
       shallow:   '#6fd0e8'
     }
   };
@@ -45,6 +50,7 @@
     C.colors = Object.assign({}, DEFAULTS.colors, (overrides || {}).colors);
     const hex = (s) => B.Color3.FromHexString(s);
     const S = C.size, HALF = S / 2;
+    const terrain = global.createTerrain({ size: S });
 
     scene.clearColor = B.Color4.FromColor3(hex(C.colors.sky));
     scene.fogMode = B.Scene.FOGMODE_LINEAR;
@@ -147,6 +153,8 @@
     // checker, clipped to the grass so it never bleeds onto the sand
     ctx.save();
     circle(0, 0, grassR); ctx.clip();
+
+    // checker goes down FIRST, so the terrace bands paint over it, not under
     ctx.fillStyle = C.colors.grassAlt;
     const cell = 2.0;
     for (let ix = -HALF; ix < HALF; ix += cell) {
@@ -155,6 +163,22 @@
         ctx.fillRect(PX(ix), PY(iz + cell), PW(cell), PW(cell));
       }
     }
+
+    /* Terrain features are drawn from the SAME shape definitions the height
+     * field uses, so the sandstone bands land exactly on the slopes. Filling
+     * the grown outline and then the plain outline over it leaves a clean band,
+     * without the internal arcs a stroked union would show. */
+    const T = terrain;
+    ctx.fillStyle = C.colors.cliffDark;
+    T.plateauPath(ctx, PX, PY, PW, T.shapes.cliffBand + 0.12); ctx.fill();
+    T.rampPath(ctx, PX, PY, PW, T.shapes.ramp.band + 0.20); ctx.fill();
+    ctx.fillStyle = C.colors.cliff;
+    T.plateauPath(ctx, PX, PY, PW, T.shapes.cliffBand * 0.5); ctx.fill();
+    T.rampPath(ctx, PX, PY, PW, T.shapes.ramp.band * 0.4); ctx.fill();
+    ctx.fillStyle = C.colors.grassHigh;
+    T.plateauPath(ctx, PX, PY, PW, -0.18); ctx.fill();
+    ctx.fillStyle = C.colors.grass;
+    T.rampPath(ctx, PX, PY, PW, -0.30); ctx.fill();
 
     /* ------------------------------------------------------------- paths */
     const stroke = (pts, w, colour) => {
@@ -176,22 +200,49 @@
       ctx.fill();
     };
 
-    // worn dirt under the busy areas
-    patch(7.6, 6.2, 4.2, C.colors.dirt);      // playground
-    patch(-2.6, -5.4, 2.2, C.colors.dirt);    // campfire
-    patch(-8.0, -1.2, 3.4, C.colors.dirt);    // garden
+    /* Worn dirt under the busy areas only. These were far too generous before
+     * - a radius-6 patch is 113 square units, and between them they turned
+     * 40% of the island brown. */
+    patch(8.4, -5.4, 2.7, C.colors.dirt);     // playground
+    patch(-4.2, -3.6, 1.7, C.colors.dirt);    // campfire
+    patch(7.2, 6.4, 3.2, C.colors.dirt);      // the farm
+    patch(-7.4, 9.4, 1.6, C.colors.dirt);     // house frontage
 
     const ROUTES = [
-      [[0, -11.4], [0, -7.0], [0.4, -2.0], [0, 3.0], [-0.4, 7.0], [0, 9.6]],  // spine
-      [[0, 6.6], [-2.6, 7.4], [-5.4, 7.2]],                                    // house
-      [[0.2, 4.6], [3.4, 5.2], [6.6, 5.6]],                                    // playground
-      [[0.3, -2.6], [3.6, -3.4], [6.8, -4.2]],                                 // pool
-      [[-0.1, -0.8], [-3.4, -1.0], [-6.6, -1.2]],                              // garden
-      [[0, -6.2], [-2.4, -5.6]],                                               // campfire spur
-      [[0.4, 1.4], [2.6, 1.6]]                                                 // table spur
+      [[-6.2, -13.2], [-5.8, -9.4], [-4.6, -6.0], [-4.2, -3.8]],   // pier to camp
+      [[-4.2, -3.8], [-2.4, -2.6], [0.0, -1.1]],                   // camp to bridge
+      [[0.0, -1.1], [2.4, 0.4], [4.6, 2.4], [6.4, 5.2]],           // bridge to farm
+      [[6.4, 5.2], [7.6, 8.4], [7.2, 10.6]],                       // through the farm
+      [[2.4, 0.4], [5.4, -2.4], [8.2, -5.0]],                      // to the playground
+      [[-4.2, -3.8], [-7.0, -5.4], [-9.6, -7.0]],                  // camp to pool
+      [[-4.6, -6.0], [-7.4, -3.4], [-9.4, -0.6]],                  // to the ramp foot
+      [[-9.4, -0.6], [-9.4, 4.0]],                                 // up the incline
+      [[-9.4, 4.0], [-8.6, 6.6], [-7.4, 8.4]],                     // incline to house
+      [[-7.4, 8.4], [-4.8, 7.4], [-3.2, 5.4]]                      // house to the lookout
     ];
-    ROUTES.forEach((r) => stroke(r, 1.85, C.colors.pathEdge));
-    ROUTES.forEach((r) => stroke(r, 1.45, C.colors.path));
+    ROUTES.forEach((r) => stroke(r, 1.50, C.colors.pathEdge));
+    ROUTES.forEach((r) => stroke(r, 1.15, C.colors.path));
+
+    // the river: banks, then bed, then the water surface itself
+    T.riverStroke(ctx, PX, PY, PW, (T.shapes.riverW + T.shapes.riverBank) * 2.15, C.colors.cliffDark);
+    T.riverStroke(ctx, PX, PY, PW, (T.shapes.riverW + T.shapes.riverBank * 0.4) * 2, C.colors.riverBed);
+    T.riverStroke(ctx, PX, PY, PW, T.shapes.riverW * 1.9, C.colors.river);
+
+    /* AC-style grass flecks. Cheap, and they stop big open lawns reading as
+     * flat colour once the camera is close. */
+    ctx.fillStyle = 'rgba(120,176,78,0.55)';
+    for (let i = 0; i < 2600; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(Math.random()) * grassR;
+      const gx = Math.cos(a) * rr, gz = Math.sin(a) * rr;
+      const px = PX(gx), py = PY(gz), sz = PW(0.13);
+      ctx.beginPath();
+      ctx.moveTo(px, py - sz);
+      ctx.lineTo(px + sz * 0.8, py + sz * 0.7);
+      ctx.lineTo(px - sz * 0.8, py + sz * 0.7);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
 
     // wet sand + foam where the water meets the shore
@@ -222,40 +273,34 @@
     groundMat.diffuseTexture = dt;
     groundMat.specularColor = new B.Color3(0.02, 0.02, 0.02);
 
-    const top = B.MeshBuilder.CreateGround('islandTop',
-      { width: S, height: S, subdivisions: 1 }, scene);
+    // height-field grid rather than a flat plane: terraces, the incline and
+    // the river channel are all geometry now, not just paint
+    const top = terrain.buildMesh(scene, 'islandTop', 168);
     top.material = groundMat;
     top.receiveShadows = true;
-    top.isPickable = false;
 
     const soilMat = new B.StandardMaterial('soilMat', scene);
     soilMat.diffuseColor = hex(C.colors.soil);
     soilMat.specularColor = new B.Color3(0, 0, 0);
 
-    // Body matches the painted disc. Its top face must sit BELOW the ground
-    // plane; coplanar at y=0 they z-fight and the brown rim wins, hiding the
-    // painted ground entirely.
-    const SIDES = 30;
-    const rimBlock = B.MeshBuilder.CreateCylinder('islandRim', {
-      diameter: S - 0.12, height: C.grassH, tessellation: SIDES
-    }, scene);
-    rimBlock.position.y = -C.grassH / 2 - 0.025;
-    rimBlock.material = soilMat;
-    rimBlock.isPickable = false;
-
+    /* The shore is part of the height field now, so there is no rim cylinder to
+     * z-fight with. All that is left below is the underside of the island. */
+    const SIDES = 34;
+    const sh = terrain.shapes;
+    const underTop = -sh.shoreDrop + 0.15;
     const soil = B.MeshBuilder.CreateCylinder('islandSoil', {
-      diameterTop: S - 0.6, diameterBottom: S - C.soilInset * 4,
+      diameterTop: (sh.shoreR + sh.shoreFall) * 2, diameterBottom: S - C.soilInset * 5,
       height: C.soilH, tessellation: SIDES
     }, scene);
-    soil.position.y = -C.grassH - C.soilH / 2 + 0.02;
+    soil.position.y = underTop - C.soilH / 2;
     soil.material = soilMat;
     soil.isPickable = false;
 
     const tip = B.MeshBuilder.CreateCylinder('islandTip', {
-      diameterTop: S - C.soilInset * 4, diameterBottom: S * 0.10,
-      height: C.soilH * 2.1, tessellation: SIDES
+      diameterTop: S - C.soilInset * 5, diameterBottom: S * 0.10,
+      height: C.soilH * 2.2, tessellation: SIDES
     }, scene);
-    tip.position.y = -C.grassH - C.soilH - C.soilH * 1.0;
+    tip.position.y = underTop - C.soilH - C.soilH * 1.1;
     tip.material = soilMat;
     tip.isPickable = false;
 
@@ -316,9 +361,50 @@
     shallow.material = shallowMat;
     shallow.isPickable = false;
 
+    /* --------------------------------------------------- river + waterfall
+     * A ribbon following the same polyline the channel was carved from, so
+     * the surface always sits inside its own banks. */
+    const riverMat = new B.StandardMaterial('riverMat', scene);
+    riverMat.diffuseTexture = waterTex;
+    riverMat.diffuseColor = hex(C.colors.river);
+    riverMat.emissiveColor = hex(C.colors.river).scale(0.22);
+    riverMat.specularColor = new B.Color3(0.5, 0.55, 0.55);
+    riverMat.specularPower = 96;
+    riverMat.alpha = 0.9;
+
+    const RV = terrain.shapes.river;
+    const edgeA = [], edgeB = [];
+    for (let i = 0; i < RV.length; i++) {
+      const p = RV[i];
+      const q = RV[Math.min(i + 1, RV.length - 1)];
+      const o = RV[Math.max(i - 1, 0)];
+      const dx = q[0] - o[0], dz = q[1] - o[1];
+      const L = Math.hypot(dx, dz) || 1;
+      const nx2 = -dz / L, nz2 = dx / L;                // perpendicular
+      const w = terrain.shapes.riverW * 0.98;
+      // surface sits just under the local bank height
+      const y = terrain.heightAt(p[0], p[1]) + terrain.shapes.riverDepth * 0.42;
+      edgeA.push(new B.Vector3(p[0] + nx2 * w, y, p[1] + nz2 * w));
+      edgeB.push(new B.Vector3(p[0] - nx2 * w, y, p[1] - nz2 * w));
+    }
+    const river = B.MeshBuilder.CreateRibbon('river',
+      { pathArray: [edgeA, edgeB], sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+    river.material = riverMat;
+    river.isPickable = false;
+
     /* ---------------------------------------------------------- the camp */
     const kit = global.createPropKit(scene);
-    layout(kit);
+    kit.hAt = terrain.heightAt;
+    /* Read the drop off the terrain rather than guessing it: sample the
+     * channel bed just upstream of the lip and just downstream in the plunge
+     * pool, so the sheet always spans exactly the cliff it falls over. */
+    const F = terrain.shapes.fallAt;
+    const fUp = terrain.heightAt(F.x - Math.sin(F.ry) * 1.0, F.z - Math.cos(F.ry) * 1.0);
+    const fDn = terrain.heightAt(F.x + Math.sin(F.ry) * 1.6, F.z + Math.cos(F.ry) * 1.6);
+    kit.waterfall(F.x, F.z,
+      fUp + terrain.shapes.riverDepth * 0.42,
+      fDn + terrain.shapes.riverDepth * 0.42, 2.7, F.ry);
+    layout(kit, terrain);
 
     /* Merge the static props by material. A few hundred small meshes is a few
      * hundred draw calls; this collapses them to one per material. */
@@ -346,7 +432,15 @@
     /* ------------------------------------------------------ collision API */
     const solids = kit.solids;
     const platforms = kit.platforms;
-    const STEP_UP = 0.20;      // curbs you can walk over without jumping
+    // Curbs you can walk over without jumping. Also the threshold that decides
+    // whether terrain is a slope or a wall, so it is kept below the shallowest
+    // cliff rise the player can accumulate in one frame.
+    const STEP_UP = 0.16;
+    /* Terrain steeper than this is a wall. The incline is ~0.56, cliff faces
+     * are ~7.7, so anything between the two works. Probed a fixed distance
+     * ahead, independent of how far the player actually moved this frame. */
+    const MAX_SLOPE = 1.1;
+    const PROBE = 0.32;
     /* You can stand with your feet slightly over an edge. This margin must
      * EXCEED the inflation used for side-blocking below, or there is a dead
      * band where you have cleared the block but cannot land yet, and jumping
@@ -365,7 +459,8 @@
     const limR = HALF - C.edgePad;
 
     function groundAt(x, z, y) {
-      let best = 0;
+      // the terrain itself is the base surface now, not a flat zero
+      let best = terrain.heightAt(x, z);
       const m = STAND_MARGIN;
       for (let i = 0; i < platforms.length; i++) {
         const p = platforms[i];
@@ -382,9 +477,37 @@
      * is merely still above you is a transient block - killing velocity there
      * scrubs off all your forward speed against the face while you rise, and
      * you can never jump onto anything. */
-    function resolve(x, z, y, r, out) {
+    /* fx,fz is where the player currently is; x,z is where they want to go. */
+    function resolve(fx, fz, x, z, y, r, out) {
       let nx = x, nz = z;
       out.solidX = false; out.solidZ = false;
+
+      /* Terrain acts as a wall wherever it rises faster than the player can
+       * step, tested one axis at a time so you slide along a face rather than
+       * sticking to it. Walkways (bridge, dock) are exempt - they sit above
+       * the ground beneath them.
+       *
+       * The probe is a FIXED distance ahead, not the actual step. Testing the
+       * step itself lets the player creep up any cliff: being blocked zeroes
+       * their velocity, so the next step is nearly zero, its rise is below the
+       * threshold and it is allowed - repeat sixty times a second and they
+       * inch to the top. */
+      if (!onWalkway(nx, nz)) {
+        /* The criterion is SLOPE, not height. A fixed-height test blocks the
+         * walkable incline as readily as a cliff, since both eventually get
+         * high; what separates them is steepness. */
+        const climbable = y + STEP_UP;
+        const h0 = terrain.heightAt(fx, fz);
+        const mdx = x - fx, mdz = z - fz;
+        if (mdx !== 0) {
+          const hx = terrain.heightAt(fx + Math.sign(mdx) * PROBE, fz);
+          if (hx > climbable && (hx - h0) / PROBE > MAX_SLOPE) { nx = fx; out.solidX = true; }
+        }
+        if (mdz !== 0) {
+          const hz = terrain.heightAt(nx, fz + Math.sign(mdz) * PROBE);
+          if (hz > climbable && (hz - h0) / PROBE > MAX_SLOPE) { nz = fz; out.solidZ = true; }
+        }
+      }
       /* Two passes. Colliders are resolved one at a time, so when two overlap
        * the second push can undo the first and leave the player inside the
        * one already handled. A second pass settles that. */
@@ -471,6 +594,17 @@
           d.wings[0].hinge.rotation.z = flap;
           d.wings[1].hinge.rotation.z = -flap;
 
+        } else if (d.kind === 'fall') {
+          // scroll the streaks downward; that IS the falling motion
+          d.tex.vOffset -= dt2 * 1.15;
+          d.tex.uOffset = Math.sin(wt * 0.6) * 0.02;
+
+        } else if (d.kind === 'foam') {
+          const f = Math.sin(wt * 4.2 + d.seed) * 0.5 + Math.sin(wt * 7.1 + d.seed) * 0.5;
+          d.mesh.scaling.x = d.mesh.scaling.z = 1 + f * 0.16;
+          d.mesh.scaling.y = 0.5 + f * 0.07;
+          d.mesh.position.y = d.baseY + f * 0.05;
+
         } else if (d.kind === 'cloud') {
           d.node.position.x += d.sp * dt2;
           if (d.node.position.x > 150) d.node.position.x = -150;
@@ -485,7 +619,8 @@
       solids, platforms,
       groundAt, resolve, update,
       bounds: { minX: -limR, maxX: limR, minZ: -limR, maxZ: limR, radius: limR },
-      spawn: { x: 0, z: -6.5 },
+      terrain,
+      spawn: { x: -4.6, z: -6.4 },
       groundY: 0
     };
   }
@@ -494,174 +629,208 @@
    * Base camp layout. Everything is placed here so the arrangement can be
    * read and changed in one place.
    * ==================================================================== */
-  function layout(k) {
-    /* ------------------------------------------------------------- house */
-    k.house(-5.6, 9.2, Math.PI);          // front faces -Z, toward the player
-    k.mailbox(-2.9, 7.9, Math.PI);
-    k.sign(-8.9, 6.6, Math.PI * 0.85);
-    k.bush(-8.2, 9.4, 1.1);
-    k.bush(-2.6, 10.2, 0.9);
-    k.flowerBed(-8.4, 8.4, 1.2, 1.2, ['red', 'yellow']);
-    k.lamp(-2.4, 6.2);
+  /* ======================================================================
+   * Base camp layout.
+   *
+   * The island is terraced now, so every placement goes through `at()`, which
+   * lifts whatever the builder produced onto the height field. Nothing here
+   * needs to know its own Y.
+   * ==================================================================== */
+  function layout(k, terrain) {
+    const H = terrain.heightAt;
+    const at = (x, z, fn) => k.onGround(x, z, fn);
+    const riverD = (x, z) => terrain.riverDist(x, z).d;
 
-    /* ------------------------------------------------------------ garden */
-    k.planter(-8.6, 0.6, 3.0, 1.3, ['red', 'pink', 'yellow']);
-    k.planter(-8.6, -3.0, 3.0, 1.3, ['purple', 'yellow', 'red']);
-    k.flowerBed(-6.0, -1.2, 1.4, 2.4, ['pink', 'purple', 'yellow', 'red']);
-    k.birdbath(-4.6, 1.9);
-    k.fenceRun(-10.6, 2.2, -4.4, 2.2);
-    k.fenceRun(-10.6, -4.8, -10.6, 2.2);
-    k.fenceRun(-10.6, -4.8, -4.4, -4.8);
-    k.bench(-4.9, -2.9, Math.PI * 0.5);
-    k.bush(-10.0, 1.2, 0.9);
-    k.bush(-9.4, -4.2, 0.8);
+    /* ============================ UPPER TERRACE ========================= */
+    // the house looks out over the whole camp from up here
+    at(-7.4, 9.4, () => k.house(-7.4, 9.4, Math.PI));
+    at(-4.6, 8.0, () => k.mailbox(-4.6, 8.0, Math.PI));
+    at(-10.6, 7.4, () => k.sign(-10.6, 7.4, Math.PI * 0.82));
+    at(-9.8, 11.4, () => k.bush(-9.8, 11.4, 1.1));
+    at(-5.2, 12.0, () => k.bush(-5.2, 12.0, 0.95));
+    at(-10.2, 9.6, () => k.flowerBed(-10.2, 9.6, 1.2, 1.2, ['red', 'yellow']));
+    at(-4.4, 6.4, () => k.lamp(-4.4, 6.4));
+    at(-8.4, 6.0, () => k.bench(-8.4, 6.0, 0));
+    at(-11.4, 5.4, () => k.birdbath(-11.4, 5.4));
+    at(-6.0, 6.2, () => k.flowerBed(-6.0, 6.2, 1.6, 1.0, ['pink', 'purple']));
 
-    /* -------------------------------------------------------- playground */
-    k.sandbox(6.4, 8.2, 2.6, 2.2);
-    k.swing(9.9, 6.4, Math.PI * 0.5);
-    k.slide(6.2, 4.2, 0);
-    k.ball(8.4, 8.6, 'red');
-    k.ball(4.8, 7.0, 'blue');
-    k.bench(8.6, 9.6, Math.PI);
-    k.lamp(4.4, 6.0);
-    /* Crates to hop between. Spaced past the sum of their blocking radii
-     * (half-width + player radius); any closer and the overlapping colliders
-     * fight each other and squeeze the player through. */
-    k.crate(3.0, 8.6, 1.0, 0.2);
-    k.crate(4.7, 9.2, 0.9, -0.3);
-    k.crate(1.6, 9.9, 1.05, 0.5);
+    // a lookout at the cliff edge, above the falls
+    at(-2.9, 4.8, () => k.fenceRun(-3.8, 5.6, -2.0, 3.9));
+    at(-3.8, 6.6, () => k.lamp(-3.8, 6.6));
+    at(-5.6, 3.8, () => k.hedge(-5.6, 3.8, 2.6, 0.9));
 
-    /* -------------------------------------------------------------- pool */
-    k.pool(8.4, -5.4, 4.4, 3.2);
-    k.chair(5.0, -3.4, -0.6);
-    k.ball(6.0, -7.6, 'yellow');
-    k.bush(11.4, -3.0, 1.0);
-    k.lamp(5.2, -3.0);
+    /* ============================== THE FARM =========================== */
+    // rows of crops, as in the reference
+    at(5.4, 7.6, () => k.farmPlot(5.4, 7.6, 3.4, 2.6, 'carrot'));
+    at(9.4, 7.0, () => k.farmPlot(9.4, 7.0, 3.0, 2.6, 'tomato'));
+    at(5.0, 3.6, () => k.farmPlot(5.0, 3.6, 3.4, 2.4, 'wheat'));
+    at(9.0, 3.0, () => k.farmPlot(9.0, 3.0, 3.0, 2.4, 'corn'));
+    at(7.2, 10.6, () => k.farmPlot(7.2, 10.6, 4.0, 2.2, 'pumpkin'));
+    at(7.3, 5.4, () => k.scarecrow(7.3, 5.4, 0.4));
+    at(11.8, 5.0, () => k.wheelbarrow(11.8, 5.0, 0.9));
+    at(3.2, 5.6, () => k.wateringCan(3.2, 5.6, 0.4));
+    at(11.6, 9.0, () => k.crate(11.6, 9.0, 1.0, 0.3));
+    at(12.4, 7.4, () => k.crate(12.4, 7.4, 0.9, -0.2));
+    at(2.9, 9.2, () => k.bucket(2.9, 9.2, 'red'));
+    at(10.8, 11.2, () => k.birdhouse(10.8, 11.2, Math.PI * 1.2));
 
-    /* ------------------------------------------------- centre of the camp */
-    k.table(2.9, 1.5);
-    k.chair(4.2, 1.9, -1.1);
-    k.chair(1.7, 2.2, 2.2);
-    k.chair(3.1, 0.2, 0.1);
-    k.campfire(-2.6, -5.4);
-    k.stump(-1.4, -6.4, 1.0);
-    k.stump(-3.9, -6.3, 0.95);
-    k.stump(-3.6, -4.1, 0.9);
+    /* ============================= PLAYGROUND ========================== */
+    at(7.6, -5.0, () => k.sandbox(7.6, -5.0, 2.6, 2.2));
+    at(11.0, -6.8, () => k.swing(11.0, -6.8, Math.PI * 0.42));
+    at(6.4, -8.6, () => k.slide(6.4, -8.6, Math.PI));
+    at(9.6, -2.6, () => k.seesaw(9.6, -2.6, Math.PI * 0.3));
+    at(4.8, -3.4, () => k.ball(4.8, -3.4, 'red'));
+    at(9.8, -9.4, () => k.ball(9.8, -9.4, 'blue'));
+    at(12.2, -3.8, () => k.bench(12.2, -3.8, Math.PI * 1.3));
+    at(5.2, -6.4, () => k.lamp(5.2, -6.4));
+    at(11.4, -10.2, () => k.crate(11.4, -10.2, 1.0, 0.2));
+    at(12.8, -8.8, () => k.crate(12.8, -8.8, 0.9, -0.3));
 
-    /* stepping stones and stumps: low hops off the path */
-    k.stone(2.0, -6.6, 1.0);
-    k.stone(3.3, -7.5, 1.0);
-    k.stone(4.6, -8.4, 1.0);
-    k.stump(6.0, -9.2, 1.0);
-    k.crate(-6.3, 4.3, 1.0, 0.3);
-    k.crate(-7.9, 5.4, 0.85, -0.2);
-    k.stump(1.9, 4.3, 1.0);
-    k.crate(-0.9, 10.4, 1.0, 0.4);
-    k.crate(0.8, 11.0, 0.9, -0.4);
+    /* ================================ POOL ============================= */
+    at(-10.0, -7.6, () => k.pool(-10.0, -7.6, 4.2, 3.0));
+    at(-12.4, -6.0, () => k.poolLadder(-12.4, -6.0, 0));
+    at(-6.6, -8.8, () => k.umbrella(-6.6, -8.8, 0.14));
+    at(-7.6, -6.2, () => k.towel(-7.6, -6.2, 0.4, 'pink'));
+    at(-6.2, -10.6, () => k.towel(-6.2, -10.6, -0.3, 'blue'));
+    at(-5.4, -7.0, () => k.chair(-5.4, -7.0, -0.6));
 
-    /* Trees ring the shoreline. Placed on a CIRCLE, since the island is a
-     * disc - laid out on a square they float off the edge at the diagonals. */
-    /* Zones already occupied by a built area. A tree dropped on the ring can
-     * otherwise land inside the pool or the playground. */
+    /* ============================== THE CAMP =========================== */
+    at(-4.2, -3.6, () => k.campfire(-4.2, -3.6));
+    at(-4.2, -3.6, () => k.tripod(-4.2, -3.6));
+    at(-2.9, -4.6, () => k.stump(-2.9, -4.6, 1.0));
+    at(-5.5, -4.6, () => k.stump(-5.5, -4.6, 0.95));
+    at(-5.2, -2.2, () => k.stump(-5.2, -2.2, 0.9));
+    at(-2.6, -1.8, () => k.table(-2.6, -1.8));
+    at(-2.6, -1.8, () => k.tableSet(-2.6, -1.8));
+    at(-1.3, -1.4, () => k.chair(-1.3, -1.4, -1.1));
+    at(-3.8, -1.1, () => k.chair(-3.8, -1.1, 2.2));
+    at(-2.4, -3.1, () => k.chair(-2.4, -3.1, 0.1));
+    at(-7.2, -1.6, () => k.bench(-7.2, -1.6, Math.PI * 0.5));
+    at(-8.8, -3.0, () => k.hedge(-8.8, -3.0, 0.9, 2.4));
+
+    /* ============================== CROSSINGS ========================== */
+    // the path over the river; span covers both banks
+    k.bridge(0.0, -1.1, 1.265, 6.2);
+    // pier out to sea, on the south-west shore
+    k.dock(-6.4, -13.4, -0.16, -0.99, 7.0);
+    k.boat(-4.4, -16.4, 0.5);
+    at(-7.6, -12.2, () => k.lamp(-7.6, -12.2));
+
+    /* stepping stones and hops off the main routes */
+    // on dry ground west of the river - in the channel they simply drown
+    at(-6.4, -9.8, () => k.stone(-6.4, -9.8, 1.0));
+    at(-5.4, -10.8, () => k.stone(-5.4, -10.8, 1.0));
+    at(-4.4, -11.8, () => k.stone(-4.4, -11.8, 1.0));
+    at(-1.6, 8.6, () => k.stump(-1.6, 8.6, 1.0));
+    at(-0.4, 10.2, () => k.crate(-0.4, 10.2, 1.0, 0.4));
+    at(1.3, 10.8, () => k.crate(1.3, 10.8, 0.9, -0.4));
+    at(-9.6, -11.0, () => k.stump(-9.6, -11.0, 1.0));
+
+    /* ================================ TREES ============================ */
     const RESERVED = [
-      { x: -5.6, z: 9.2, hw: 4.0, hd: 3.4 },    // house
-      { x: 8.4, z: -5.4, hw: 4.0, hd: 3.4 },    // pool
-      { x: 7.2, z: 6.6, hw: 4.8, hd: 4.4 },     // playground
-      { x: -8.0, z: -1.2, hw: 4.0, hd: 4.6 },   // garden
-      { x: 0, z: 0, hw: 1.6, hd: 13 },          // the main path spine
-      { x: 2.9, z: 1.5, hw: 2.4, hd: 2.2 }      // table
+      { x: -7.4, z: 9.4, hw: 4.2, hd: 3.6 },     // house
+      { x: 7.2, z: 6.6, hw: 6.4, hd: 6.2 },      // farm
+      { x: 8.6, z: -5.6, hw: 5.4, hd: 5.4 },     // playground
+      { x: -10.0, z: -7.6, hw: 4.2, hd: 3.4 },   // pool
+      { x: -3.6, z: -2.6, hw: 3.6, hd: 3.4 },    // camp
+      { x: -6.4, z: -14.0, hw: 2.0, hd: 4.0 }    // pier approach
     ];
-    const taken = (x, z) => RESERVED.some(
-      (r) => Math.abs(x - r.x) < r.hw && Math.abs(z - r.z) < r.hd);
+    const taken = (x, z) =>
+      RESERVED.some((r) => Math.abs(x - r.x) < r.hw && Math.abs(z - r.z) < r.hd) ||
+      riverD(x, z) < 3.0;                        // never in the water
 
-    const RING_R = 11.7;
     const kinds = ['pine', 'pine', 'round', 'pine', 'round'];
     const ring = [];
-    const N = 20;
+    const N = 26;
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2 + 0.15;
-      const r = RING_R + Math.sin(i * 2.3) * 0.55;
+      const r = 13.4 + Math.sin(i * 2.3) * 0.7;
       const tx = Math.cos(a) * r, tz = Math.sin(a) * r;
       if (taken(tx, tz)) continue;
-      ring.push([tx, tz, 0.95 + (i % 3) * 0.11, kinds[i % kinds.length]]);
+      ring.push([tx, tz, 0.95 + (i % 3) * 0.12, kinds[i % kinds.length]]);
     }
-    // a few inside the camp for depth
-    ring.push([7.2, 1.6, 0.95, 'round'], [-0.8, 8.4, 0.9, 'round'],
-              [9.4, -1.8, 1.0, 'pine'],  [-6.2, -7.6, 1.05, 'round'],
-              [2.6, -9.2, 0.9, 'pine']);
+    // orchard on the upper terrace and clumps inside the camp
+    ring.push([-9.2, 12.4, 1.05, 'round'], [-11.8, 10.4, 1.0, 'pine'],
+              [-12.6, 2.6, 1.1, 'pine'],  [-6.2, 11.8, 0.95, 'round'],
+              [2.4, 7.4, 0.95, 'round'],  [2.2, 2.0, 0.9, 'round'],
+              [-8.2, 1.2, 1.0, 'pine'],   [3.4, -11.2, 0.95, 'pine'],
+              [-1.8, -8.2, 1.05, 'round'],[-11.0, -1.4, 1.0, 'round'],
+              [12.6, 1.0, 1.05, 'pine'],  [-2.2, 12.6, 1.0, 'pine']);
     ring.forEach((t, i) => {
-      if (t[3] === 'pine') k.pine(t[0], t[1], t[2], i * 0.7);
-      else k.roundTree(t[0], t[1], t[2], i * 0.9, i % 2 ? 'leafA' : 'leafB',
-                       i % 4 === 1 ? 'red' : (i % 7 === 3 ? 'orange' : null));
+      if (taken(t[0], t[1])) return;
+      at(t[0], t[1], () => {
+        if (t[3] === 'pine') k.pine(t[0], t[1], t[2], i * 0.7);
+        else k.roundTree(t[0], t[1], t[2], i * 0.9, i % 2 ? 'leafA' : 'leafB',
+                         i % 3 === 1 ? 'red' : (i % 5 === 2 ? 'orange' : null));
+      });
     });
 
-    /* scattered flowers to lift the colour, kept off the paths */
+    /* ============================== DRESSING =========================== */
     const spots = [
-      [-3.8, 4.6], [-2.2, 3.4], [3.8, 3.4], [5.2, 2.4], [-5.4, 6.0],
-      [7.8, 3.0], [-9.6, 4.4], [10.0, 1.2], [-1.6, -8.6], [1.2, -9.4],
-      [-7.2, -6.4], [6.8, -1.4], [-9.2, -6.0], [3.2, 10.2], [-4.6, 10.4],
-      [9.8, -6.4], [-8.2, 8.0], [7.4, 9.4]
+      [-5.0, 4.4], [-9.0, 2.4], [-3.0, 10.8], [-11.0, 12.2], [3.6, 1.0],
+      [11.4, 2.0], [4.2, 11.8], [12.0, -1.2], [-2.0, -6.4], [1.6, -10.2],
+      [-8.4, -10.4], [6.0, -1.6], [-12.6, -3.6], [10.0, -12.4], [-3.2, -11.6],
+      [13.0, 10.0], [-13.2, 7.6], [8.4, 12.6], [-1.0, -13.0], [12.4, -6.2]
     ];
     const cols = ['red', 'yellow', 'pink', 'purple', 'orange'];
-    spots.forEach((s, i) => k.flowerBed(s[0], s[1], 0.7, 0.7, [cols[i % cols.length]]));
+    spots.forEach((s, i) => {
+      if (riverD(s[0], s[1]) < 2.4) return;
+      at(s[0], s[1], () => k.flowerBed(s[0], s[1], 0.75, 0.75, [cols[i % cols.length]]));
+    });
 
-    /* ------------------------------------------------------------ detail */
-    k.birdhouse(-3.9, 11.0, Math.PI * 0.9);
-    k.birdhouse(10.2, 3.4, Math.PI * 1.4);
-    k.hedge(-3.2, 9.6, 2.6, 0.9);
-    k.hedge(4.0, 2.6, 0.9, 2.4);
-    k.seesaw(9.0, 9.0, Math.PI * 0.35);
-    k.poolLadder(6.6, -3.9, 0);
-    k.umbrella(4.6, -6.8, 0.14);
-    k.towel(5.8, -8.3, 0.4, 'pink');
-    k.towel(3.6, -5.6, -0.3, 'blue');
-    k.tripod(-2.6, -5.4);
-    k.wheelbarrow(-6.4, 1.2, 0.7);
-    k.wateringCan(-5.2, -0.2, 0.4);
-    k.tableSet(2.9, 1.5);
-    k.bucket(6.2, 8.0, 'yellow');
-    k.bucket(-9.5, -1.9, 'red');
-
-    // pier out over the water, with a boat moored alongside
-    const dock = k.dock(0.4, -12.1, 0.0, -1.0, 7.0);
-    k.boat(2.2, -15.6, 0.35);
-    k.lamp(-1.1, -12.4);
-
-    // mushrooms, rocks and grass tufts to break up open grass
     const detail = [
-      [-9.8, 6.2], [-6.8, 10.2], [4.2, -10.4], [-2.0, 10.6], [10.6, -2.4],
-      [-11.0, -2.4], [8.0, 2.2], [-4.0, -9.4], [6.2, -0.4], [-8.6, 4.0],
-      [2.2, 6.4], [-3.0, 0.6], [5.0, 4.2], [-10.4, 8.2], [9.2, -8.6]
+      [-10.6, 3.6], [-6.6, 12.6], [4.6, -12.4], [-2.6, 11.8], [12.2, -2.8],
+      [-12.4, -1.6], [8.6, 1.4], [-4.6, -10.4], [6.6, 0.2], [-9.4, 5.0],
+      [2.8, 6.8], [-6.0, 0.2], [4.4, 4.6], [-12.0, 9.4], [10.4, -9.8],
+      [1.2, 3.2], [-10.0, -4.4], [13.2, 4.2], [-1.4, -10.6], [5.6, 12.2]
     ];
     detail.forEach((d, i) => {
-      if (i % 3 === 0) k.mushroom(d[0], d[1], 0.9 + (i % 3) * 0.2, i % 2 ? 'red' : 'orange');
-      else if (i % 3 === 1) k.rock(d[0], d[1], 0.8 + (i % 4) * 0.22, i);
-      else k.grassTuft(d[0], d[1], 1.0);
+      if (riverD(d[0], d[1]) < 2.2) return;
+      at(d[0], d[1], () => {
+        if (i % 3 === 0) k.mushroom(d[0], d[1], 0.95 + (i % 3) * 0.18, i % 2 ? 'red' : 'orange');
+        else if (i % 3 === 1) k.rock(d[0], d[1], 0.85 + (i % 4) * 0.22, i);
+        else k.grassTuft(d[0], d[1], 1.0);
+      });
     });
-    for (let i = 0; i < 26; i++) {
-      const a = (i / 26) * Math.PI * 2 + 0.9;
-      const r = 5.5 + (i % 5) * 1.3;
-      const gx = Math.cos(a) * r, gz = Math.sin(a) * r;
-      if (Math.abs(gx) < 1.4) continue;              // keep the main path clear
-      k.grassTuft(gx, gz, 0.85 + (i % 3) * 0.2);
+
+    // rocks along the riverbank, where a real stream would leave them
+    for (let i = 0; i < 16; i++) {
+      const p = terrain.shapes.river[Math.min(terrain.shapes.river.length - 2,
+                                              1 + Math.floor(i / 2))];
+      const q = terrain.shapes.river[Math.min(terrain.shapes.river.length - 1,
+                                              2 + Math.floor(i / 2))];
+      const t = (i % 2) ? 0.35 : 0.72;
+      const bx = p[0] + (q[0] - p[0]) * t, bz = p[1] + (q[1] - p[1]) * t;
+      const nx = -(q[1] - p[1]), nz = (q[0] - p[0]);
+      const L = Math.hypot(nx, nz) || 1;
+      const side = (i % 4 < 2) ? 1 : -1;
+      const off = terrain.shapes.riverW + 0.75;
+      const rx = bx + (nx / L) * off * side, rz = bz + (nz / L) * off * side;
+      at(rx, rz, () => k.rock(rx, rz, 0.7 + (i % 3) * 0.25, i * 0.9));
     }
 
-    /* ------------------------------------------------- butterflies + sky */
-    /* Homes are kept clear of the house and other tall props - the wander
-     * radius is up to ~3 units and butterflies will fly into a wall. */
+    for (let i = 0; i < 30; i++) {
+      const a = (i / 30) * Math.PI * 2 + 0.9;
+      const r = 5.0 + (i % 6) * 1.5;
+      const gx = Math.cos(a) * r, gz = Math.sin(a) * r;
+      if (riverD(gx, gz) < 2.2) continue;
+      at(gx, gz, () => k.grassTuft(gx, gz, 0.85 + (i % 3) * 0.2));
+    }
+
+    /* ========================= BUTTERFLIES + SKY ======================= */
     const flutter = [
-      [-8.4, 0.4], [-6.0, -1.2], [-3.8, 4.6], [3.8, 3.4], [5.2, 2.4],
-      [7.8, 3.0], [-5.4, 5.4], [1.2, -9.4], [-1.0, 6.4], [6.8, -1.4],
-      [10.0, 1.2], [-1.6, -8.6]
+      [-6.0, 6.2], [-10.2, 9.6], [5.4, 7.6], [9.4, 7.0], [5.0, 3.6],
+      [-5.0, 4.4], [3.6, 1.0], [-2.0, -6.4], [11.4, 2.0], [6.0, -1.6],
+      [-8.4, -10.4], [4.2, 11.8], [-12.6, -3.6], [7.2, 10.6]
     ];
-    flutter.forEach((f, i) => k.butterfly(f[0], f[1], i));
+    flutter.forEach((f, i) => at(f[0], f[1], () => k.butterfly(f[0], f[1], i)));
 
     /* Kept low enough to sit near the horizon. Higher up they are simply above
      * the frame at the camera's normal pitch and never seen. */
     const clouds = [
-      [-42, 17, -34, 1.6], [34, 20, -50, 2.0], [-22, 15, 46, 1.7],
-      [56, 18, 20, 1.4], [10, 23, 62, 2.2], [-64, 16, 26, 1.8],
-      [72, 21, -18, 1.5], [-30, 19, 70, 1.9]
+      [-46, 17, -38, 1.6], [38, 20, -54, 2.0], [-26, 15, 50, 1.7],
+      [60, 18, 24, 1.4], [12, 23, 66, 2.2], [-68, 16, 30, 1.8],
+      [76, 21, -20, 1.5], [-34, 19, 74, 1.9]
     ];
     clouds.forEach((c, i) => k.cloud(c[0], c[1], c[2], c[3], i));
   }

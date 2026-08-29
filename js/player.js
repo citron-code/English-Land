@@ -140,13 +140,14 @@
       /* Horizontal first, so the vertical solve runs against the position the
        * character actually ended up at. */
       const p = char.root.position;
+      const fromX = p.x, fromZ = p.z;
       const wantX = p.x + vx * dt;
       const wantZ = p.z + vz * dt;
 
       // Push out of anything solid, and off any platform whose top is above
       // the feet. Velocity is zeroed only on the axis that actually got
       // corrected, so sliding along a wall still works.
-      world.resolve(wantX, wantZ, airY, C.radius, hit);
+      world.resolve(fromX, fromZ, wantX, wantZ, airY, C.radius, hit);
       // Velocity is killed only against permanently solid things. Against a
       // platform you are merely below, position is clamped but speed is kept -
       // otherwise you scrub off all forward motion on the face while rising

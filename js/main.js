@@ -27,9 +27,12 @@
       new B.Vector3(0, H * 0.62, 0), scene
     );
     camera.attachControl(canvas, true);
-    // Default minZ 1.0 clips the model on close shots and looks like mesh holes
-    camera.minZ = 0.05;
-    camera.maxZ = 400;
+    /* Default minZ 1.0 clips the model on close shots and looks like mesh
+     * holes. But too small is also bad: near/far sets depth precision, and at
+     * 0.05/400 (8000:1) surfaces a few centimetres apart z-fight badly out at
+     * island scale. 0.3 still clears the character comfortably. */
+    camera.minZ = 0.3;
+    camera.maxZ = 340;
     camera.lowerRadiusLimit = H * 1.8;
     camera.upperRadiusLimit = H * 9;
     camera.lowerBetaLimit = 0.35;

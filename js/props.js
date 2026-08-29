@@ -99,6 +99,27 @@
     kit.solidBox = (x, z, hw, hd) => kit.solids.push({ kind: 'box', x, z, hw, hd });
     kit.platform = (x, z, hw, hd, top) => kit.platforms.push({ x, z, hw, hd, top });
 
+    /* The ground is a height field now, so props have to be lifted onto it.
+     * Rather than thread a Y through all thirty builders, this records what a
+     * builder produced and shifts exactly that. `kit.hAt` is set by world.js. */
+    kit.hAt = null;
+    kit.onGround = (x, z, fn) => {
+      const m0 = kit.meshes.length, p0 = kit.platforms.length, d0 = kit.dynamic.length;
+      fn();
+      const gy = kit.hAt ? kit.hAt(x, z) : 0;
+      if (Math.abs(gy) < 1e-4) return gy;
+      for (let i = m0; i < kit.meshes.length; i++) kit.meshes[i].position.y += gy;
+      for (let i = p0; i < kit.platforms.length; i++) kit.platforms[i].top += gy;
+      for (let i = d0; i < kit.dynamic.length; i++) {
+        const d = kit.dynamic[i];
+        if (d.mesh) d.mesh.position.y += gy;
+        if (d.node) d.node.position.y += gy;
+        if (d.baseY !== undefined) d.baseY += gy;
+        if (d.hi !== undefined) d.hi += gy;
+      }
+      return gy;
+    };
+
     /* -------------------------------------------------------------- trees */
     kit.pine = (x, z, s, ry) => {
       s = s || 1; ry = ry || 0;
@@ -569,7 +590,7 @@
 
     kit.stone = (x, z, s) => {
       s = s || 1;
-      const h = 0.18;
+      const h = 0.14;          // must stay under world.js STEP_UP to be walkable
       const b = cyl('sn', 0.86 * s, 0.94 * s, h, 9);
       b.position.set(x, h / 2, z); add(b, 'stone', false);
       kit.platform(x, z, 0.44 * s, 0.44 * s, h);
@@ -938,6 +959,256 @@
         sp: 0.32 + (i % 5) * 0.06,
         hi: 0.75 + (i % 4) * 0.22
       });
+    };
+
+    /* ==================================================================
+     * Farm
+     * ================================================================ */
+
+    const CROPS = {
+      wheat: (x, z, s) => {
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          const st = cyl('cw', 0.035 * s, 0.05 * s, 0.85 * s, 4);
+          st.rotation.set(Math.cos(a) * 0.10, a, Math.sin(a) * 0.10);
+          st.position.set(x + Math.cos(a) * 0.09 * s, 0.42 * s, z + Math.sin(a) * 0.09 * s);
+          add(st, 'leafA', false);
+          const ear = cyl('cwe', 0.02 * s, 0.13 * s, 0.34 * s, 5);
+          ear.rotation.set(Math.cos(a) * 0.10, a, Math.sin(a) * 0.10);
+          ear.position.set(x + Math.cos(a) * 0.13 * s, 0.96 * s, z + Math.sin(a) * 0.13 * s);
+          add(ear, 'yellow', false);
+        }
+      },
+      tomato: (x, z, s) => {
+        const stake = cyl('cts', 0.05 * s, 0.05 * s, 0.95 * s, 4);
+        stake.position.set(x + 0.14 * s, 0.47 * s, z); add(stake, 'woodDark', false);
+        for (let i = 0; i < 3; i++) {
+          const b = sph('ctb', (0.52 - i * 0.09) * s, 6);
+          b.scaling.y = 0.72;
+          b.position.set(x, (0.24 + i * 0.24) * s, z);
+          add(b, i % 2 ? 'bush' : 'leafA', false);
+        }
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI * 2 + 0.6;
+          const f = sph('ctf', 0.20 * s, 6);
+          f.position.set(x + Math.cos(a) * 0.22 * s, (0.34 + (i % 2) * 0.26) * s,
+                         z + Math.sin(a) * 0.22 * s);
+          add(f, 'red', false);
+        }
+      },
+      corn: (x, z, s) => {
+        const st = cyl('ccs', 0.07 * s, 0.10 * s, 1.35 * s, 5);
+        st.position.set(x, 0.67 * s, z); add(st, 'leafA', false);
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2 + 0.4;
+          const lf = cyl('ccl', 0, 0.30 * s, 0.80 * s, 3);
+          lf.rotation.set(Math.cos(a) * 0.95, a, Math.sin(a) * 0.95);
+          lf.position.set(x + Math.cos(a) * 0.24 * s, (0.55 + i * 0.14) * s,
+                          z + Math.sin(a) * 0.24 * s);
+          add(lf, i % 2 ? 'bush' : 'leafB', false);
+        }
+        const cob = cyl('ccc', 0.12 * s, 0.16 * s, 0.42 * s, 6);
+        cob.rotation.z = 0.3;
+        cob.position.set(x + 0.16 * s, 0.98 * s, z); add(cob, 'yellow', false);
+      },
+      carrot: (x, z, s) => {
+        const top = cyl('cro', 0.34 * s, 0.06 * s, 0.06 * s, 8);
+        top.position.set(x, 0.05 * s, z); add(top, 'orange', false);
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          const lf = cyl('crl', 0, 0.13 * s, 0.50 * s, 3);
+          lf.rotation.set(Math.cos(a) * 0.42, a, Math.sin(a) * 0.42);
+          lf.position.set(x + Math.cos(a) * 0.11 * s, 0.28 * s, z + Math.sin(a) * 0.11 * s);
+          add(lf, i % 2 ? 'leafA' : 'bush', false);
+        }
+      },
+      pumpkin: (x, z, s) => {
+        const p = sph('cpk', 0.72 * s, 8);
+        p.scaling.y = 0.74;
+        p.position.set(x, 0.27 * s, z); add(p, 'orange', false);
+        const stm = cyl('cps', 0.09 * s, 0.13 * s, 0.24 * s, 5);
+        stm.position.set(x, 0.52 * s, z); add(stm, 'pineA', false);
+        for (let i = 0; i < 2; i++) {
+          const a = i * 2.4 + 0.5;
+          const lf = sph('cpl', 1, 6);
+          lf.scaling.set(0.34 * s, 0.04 * s, 0.28 * s);
+          lf.position.set(x + Math.cos(a) * 0.52 * s, 0.05 * s, z + Math.sin(a) * 0.52 * s);
+          add(lf, 'bush', false);
+        }
+      }
+    };
+
+    /* A tilled bed: soil, a low timber edging, and rows of one crop. */
+    kit.farmPlot = (x, z, w, d, crop, ry) => {
+      ry = ry || 0;
+      const node = new B.TransformNode('farm', scene);
+      const soil = box('fps', w, 0.22, d);
+      soil.position.set(x, 0.11, z); soil.rotation.y = ry; add(soil, 'soil', false);
+      // furrows
+      const rows = Math.max(2, Math.round(d / 0.92));
+      for (let i = 0; i < rows; i++) {
+        const t = (i + 0.5) / rows - 0.5;
+        const fr = box('fpf', w * 0.96, 0.06, d / rows * 0.42);
+        fr.position.set(x, 0.23, z + t * d);
+        fr.rotation.y = ry;
+        add(fr, 'trunkDark', false);
+      }
+      // timber edging
+      [[0, -d / 2, w + 0.24, 0.24], [0, d / 2, w + 0.24, 0.24],
+       [-w / 2, 0, 0.24, d], [w / 2, 0, 0.24, d]].forEach((r) => {
+        const b = box('fpe', r[2], 0.30, r[3]);
+        b.position.set(x + r[0], 0.15, z + r[1]); add(b, 'wood', false);
+      });
+      // corner posts, like the reference
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach((c) => {
+        const p = cyl('fpp', 0.16, 0.19, 0.62, 6);
+        p.position.set(x + c[0] * (w / 2 + 0.12), 0.31, z + c[1] * (d / 2 + 0.12));
+        add(p, 'woodDark', false);
+      });
+
+      const fn = CROPS[crop] || CROPS.carrot;
+      const cols = Math.max(2, Math.round(w / 0.85));
+      for (let i = 0; i < rows; i++) {
+        for (let jj = 0; jj < cols; jj++) {
+          const cx = x + ((jj + 0.5) / cols - 0.5) * (w - 0.5);
+          const cz = z + ((i + 0.5) / rows - 0.5) * (d - 0.5);
+          // crop signature is (x, z, scale) - a stray fourth argument here put
+          // the z coordinate into the scale slot and grew a 10-unit pumpkin
+          fn(cx, cz, 0.9 + Math.random() * 0.2);
+        }
+      }
+      node.dispose();
+      kit.solidBox(x, z, w / 2 + 0.2, d / 2 + 0.2);
+    };
+
+    kit.scarecrow = (x, z, ry) => {
+      ry = ry || 0;
+      const post = cyl('scp', 0.11, 0.13, 1.85, 6);
+      post.position.set(x, 0.92, z); add(post, 'woodDark', true);
+      const arms = cyl('sca', 0.09, 0.09, 1.55, 6);
+      arms.rotation.set(0, ry, Math.PI / 2);
+      arms.position.set(x, 1.45, z); add(arms, 'woodDark', false);
+      const body = box('scb', 0.62, 0.72, 0.34);
+      body.position.set(x, 1.28, z); body.rotation.y = ry; add(body, 'red', true);
+      const head = sph('sch', 0.52, 8);
+      head.position.set(x, 1.92, z); add(head, 'plank', false);
+      const hat = cyl('sct', 0.10, 0.90, 0.26, 10);
+      hat.position.set(x, 2.16, z); add(hat, 'yellow', false);
+      kit.solid(x, z, 0.30);
+    };
+
+    /* ------------------------------------------------------------- bridge */
+    kit.bridge = (x, z, ry, span) => {
+      ry = ry || 0; span = span || 5.0;
+      const wdt = 2.2;
+      const dirX = Math.sin(ry), dirZ = Math.cos(ry);
+      const n = Math.round(span / 0.42);
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n - 0.5;
+        const px = x + dirX * span * t, pz = z + dirZ * span * t;
+        // gentle arch
+        const lift = Math.cos(t * Math.PI) * 0.26;
+        const pk = box('brp', wdt, 0.16, span / n * 0.94);
+        pk.rotation.y = ry;
+        pk.position.set(px, 0.30 + lift, pz);
+        add(pk, i % 2 ? 'wood' : 'plank', true);
+      }
+      // rails
+      [-1, 1].forEach((sd) => {
+        for (let i = 0; i < 5; i++) {
+          const t = i / 4 - 0.5;
+          const px = x + dirX * span * t, pz = z + dirZ * span * t;
+          const lift = Math.cos(t * Math.PI) * 0.26;
+          const post = cyl('brr', 0.11, 0.13, 0.78, 6);
+          post.position.set(px - dirZ * sd * (wdt / 2 - 0.1), 0.68 + lift,
+                            pz + dirX * sd * (wdt / 2 - 0.1));
+          add(post, 'woodDark', true);
+        }
+        const rail = box('brl', 0.10, 0.12, span * 0.99);
+        rail.rotation.y = ry;
+        rail.position.set(x - dirZ * sd * (wdt / 2 - 0.1), 1.02,
+                          z + dirX * sd * (wdt / 2 - 0.1));
+        add(rail, 'plank', false);
+      });
+      /* Platforms are axis-aligned boxes, so a diagonal bridge's AABB reaches
+       * well past the deck and you end up standing on air over the river.
+       * Shrink toward the deck's inscribed box instead. */
+      const hwA = Math.abs(dirX) * span / 2 + Math.abs(dirZ) * wdt / 2;
+      const hdA = Math.abs(dirZ) * span / 2 + Math.abs(dirX) * wdt / 2;
+      const shrink = 0.72;
+      kit.platform(x, z, hwA * shrink, hdA * shrink, 0.48);
+      kit.walkways = kit.walkways || [];
+      kit.walkways.push({ x, z, hw: hwA * shrink, hd: hdA * shrink, flat: 0.48 });
+    };
+
+    /* ---------------------------------------------------------- waterfall */
+    kit.waterfall = (x, z, topY, botY, width, ry) => {
+      ry = ry || 0;
+      const h = topY - botY;
+
+      const tex = new B.DynamicTexture('fallTex', { width: 256, height: 512 }, scene, true);
+      const c2 = tex.getContext();
+      c2.fillStyle = '#8fd8ee';
+      c2.fillRect(0, 0, 256, 512);
+      // vertical streaks, so the scroll reads as falling water
+      for (let i = 0; i < 46; i++) {
+        c2.fillStyle = i % 3 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.42)';
+        const w2 = 3 + Math.random() * 9;
+        const x2 = Math.random() * 256;
+        const y2 = Math.random() * 512;
+        const len = 90 + Math.random() * 260;
+        c2.fillRect(x2, y2, w2, len);
+        if (y2 + len > 512) c2.fillRect(x2, 0, w2, y2 + len - 512);
+      }
+      tex.update();
+      tex.wrapU = tex.wrapV = B.Texture.WRAP_ADDRESSMODE;
+      tex.hasAlpha = false;
+
+      const mat2 = new B.StandardMaterial('fallMat', scene);
+      mat2.diffuseTexture = tex;
+      mat2.emissiveColor = new B.Color3(0.42, 0.60, 0.68);
+      mat2.specularColor = new B.Color3(0.4, 0.4, 0.4);
+      mat2.alpha = 0.92;
+      mat2.backFaceCulling = false;
+
+      const sheet = B.MeshBuilder.CreatePlane('fallSheet',
+        { width: width, height: h, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+      sheet.material = mat2;
+      sheet.rotation.y = ry;
+      sheet.position.set(x, botY + h / 2, z);
+      sheet.isPickable = false;
+      kit.dynamic.push({ kind: 'fall', mesh: sheet, tex: tex });
+
+      // lip where it leaves the cliff: a slab flush with the channel, not the
+      // big floating disc a scaled cylinder gave
+      const dx = Math.sin(ry), dz = Math.cos(ry);
+      const lip = box('fl', width, 0.16, 0.85);
+      lip.rotation.y = ry;
+      lip.position.set(x - dx * 0.30, topY - 0.05, z - dz * 0.30);
+      add(lip, 'poolWater', false);
+
+      // foam pile in the plunge pool, spread across the flow direction
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const f = sph('ff', 0.52 + Math.random() * 0.36, 7);
+        f.scaling.y = 0.5;
+        f.position.set(x + Math.cos(a) * width * 0.36 + dx * 0.55,
+                       botY + 0.14,
+                       z + Math.sin(a) * width * 0.26 + dz * 0.55);
+        f.material = mat('foam', '#ffffff', { emissive: 0.45 });
+        f.isPickable = false;
+        kit.dynamic.push({ kind: 'foam', mesh: f, seed: i * 1.3, baseY: botY + 0.14 });
+      }
+      // spray haze
+      const haze = sph('fh', width * 1.15, 8);
+      haze.scaling.y = 0.42;
+      haze.position.set(x + dx * 0.5, botY + 0.38, z + dz * 0.5);
+      const hm = mat('foamHaze', '#ffffff');
+      hm.alpha = 0.20;
+      hm.emissiveColor = new B.Color3(0.6, 0.7, 0.75);
+      haze.material = hm;
+      haze.isPickable = false;
+      kit.meshes.push(haze);
     };
 
     /* ------------------------------------------------------------ clouds */
