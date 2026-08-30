@@ -261,14 +261,21 @@
       const base = box('hb', W + 0.16, 0.26, D + 0.16);
       base.position.set(x, 0.13, z); base.rotation.y = ry; add(base, 'wallTrim', true);
 
-      // hip roof: a 4-sided pyramid, turned 45 degrees so a face points front
-      const roof = cyl('hr', 0, (W + 1.5) * 0.76, 1.75, 4);
-      roof.position.set(x, Hh + 0.86, z);
+      /* Hip roof: a 4-sided pyramid turned 45 degrees so a face points front.
+       * A cylinder's `diameter` is its CIRCUMSCRIBED circle, so the square's
+       * side is diameter / sqrt(2). Sizing the diameter from the wall width
+       * directly - as this did - yields a roof narrower than the house it sits
+       * on, which is why it looked undersized. */
+      const roofSide = W + 1.0;                       // 0.5 of overhang a side
+      const roofH = 2.05;
+      const roof = cyl('hr', 0, roofSide * Math.SQRT2, roofH, 4);
+      roof.position.set(x, Hh + 0.18 + roofH / 2, z);
       roof.rotation.y = ry + Math.PI / 4;
       add(roof, 'roof', true);
 
-      const eave = cyl('he', (W + 1.2) * 0.74, (W + 1.4) * 0.78, 0.20, 4);
-      eave.position.set(x, Hh + 0.08, z);
+      const eave = cyl('he', roofSide * Math.SQRT2,
+                       (roofSide + 0.26) * Math.SQRT2, 0.26, 4);
+      eave.position.set(x, Hh + 0.12, z);
       eave.rotation.y = ry + Math.PI / 4;
       add(eave, 'roofDark', true);
 

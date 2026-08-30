@@ -640,21 +640,23 @@
     const onLand = (x, z, clear) => riverD(x, z) > (clear || 2.4) &&
                                     Math.hypot(x, z) < 13.0;
 
-    /* ======================= UPPER TERRACE (north-west) ================= */
-    at(-7.0, 9.2, () => k.house(-7.0, 9.2, Math.PI));
-    at(-4.9, 7.4, () => k.mailbox(-4.9, 7.4, Math.PI));
-    at(-9.3, 6.6, () => k.sign(-9.3, 6.6, Math.PI * 0.86));
-    // beds flanking the door, well clear of the walls
-    at(-9.8, 9.8, () => k.flowerBed(-9.8, 9.8, 1.3, 1.3, ['red', 'yellow']));
-    at(-4.2, 10.0, () => k.flowerBed(-4.2, 10.0, 1.3, 1.3, ['pink', 'purple']));
-    at(-8.4, 12.0, () => k.hedge(-8.4, 12.0, 3.0, 0.9));
-    at(-6.2, 6.4, () => k.lamp(-6.2, 6.4));
-    at(-4.9, 5.6, () => k.bench(-4.9, 5.6, Math.PI * 0.75));
-    at(-6.4, 4.4, () => k.birdbath(-6.4, 4.4));
-    at(-11.2, 7.6, () => k.birdhouse(-11.2, 7.6, Math.PI * 0.6));
+    /* ============================ HOUSE (north-west) ====================
+     * Everything is pulled in so no footprint reaches past the grass edge at
+     * r = 13.2. Several props were previously hanging over the beach, and a
+     * few past the island outline entirely. */
+    at(-6.2, 7.8, () => k.house(-6.2, 7.8, Math.PI));
+    at(-4.0, 6.0, () => k.mailbox(-4.0, 6.0, Math.PI));
+    at(-8.6, 5.6, () => k.sign(-8.6, 5.6, Math.PI * 0.86));
+    at(-9.0, 8.8, () => k.flowerBed(-9.0, 8.8, 1.3, 1.3, ['red', 'yellow']));
+    at(-3.4, 8.8, () => k.flowerBed(-3.4, 8.8, 1.3, 1.3, ['pink', 'purple']));
+    at(-6.2, 10.4, () => k.hedge(-6.2, 10.4, 2.2, 0.9));
+    at(-5.4, 5.2, () => k.lamp(-5.4, 5.2));
+    at(-8.0, 3.6, () => k.bench(-8.0, 3.6, Math.PI * 0.6));
+    at(-7.0, 2.2, () => k.birdbath(-7.0, 2.2));
+    at(-9.6, 6.4, () => k.birdhouse(-9.6, 6.4, Math.PI * 0.6));
     // a railing along the west bank, clear of the channel itself
-    at(-4.3, 4.9, () => k.fenceRun(-4.5, 6.4, -4.1, 3.4));
-    at(-4.6, 2.6, () => k.lamp(-4.6, 2.6));
+    at(-4.3, 4.6, () => k.fenceRun(-4.5, 6.0, -4.1, 3.2));
+    at(-4.6, 2.4, () => k.lamp(-4.6, 2.4));
 
     /* ============================ CAMP (south-west) ===================== */
     const CX = -5.2, CZ = -4.2;
@@ -675,50 +677,56 @@
     at(-7.4, -0.6, () => k.hedge(-7.4, -0.6, 0.9, 2.6));
     at(-3.0, -6.4, () => k.lamp(-3.0, -6.4));
 
-    /* =============================== POOL (west) ======================== */
-    at(-10.6, -8.2, () => k.pool(-10.6, -8.2, 4.2, 3.0));
-    at(-12.9, -6.4, () => k.poolLadder(-12.9, -6.4, 0));
-    at(-7.2, -9.4, () => k.umbrella(-7.2, -9.4, 0.14));
-    at(-7.6, -7.0, () => k.towel(-7.6, -7.0, 0.5, 'pink'));
-    at(-6.6, -11.0, () => k.towel(-6.6, -11.0, -0.3, 'blue'));
-    at(-8.8, -5.2, () => k.chair(-8.8, -5.2, -0.6));
-    at(-11.4, -11.0, () => k.ball(-11.4, -11.0, 'blue'));
+    /* =============================== POOL (west) ========================
+     * At 4.2 x 3.0 centred on (-10.6,-8.2) the far corner sat at r = 16.4,
+     * i.e. past the island outline entirely. Smaller, and further in. */
+    at(-8.4, -6.8, () => k.pool(-8.4, -6.8, 3.6, 2.6));
+    at(-10.4, -5.2, () => k.poolLadder(-10.4, -5.2, 0));
+    at(-6.0, -8.8, () => k.umbrella(-6.0, -8.8, 0.14));
+    at(-6.4, -6.2, () => k.towel(-6.4, -6.2, 0.5, 'pink'));
+    at(-8.0, -9.8, () => k.towel(-8.0, -9.8, -0.3, 'blue'));
+    at(-10.6, -8.6, () => k.chair(-10.6, -8.6, -0.6));
+    at(-9.2, -3.6, () => k.ball(-9.2, -3.6, 'blue'));
 
     /* ============================== PIER (south) ======================== */
     k.dock(-5.6, -12.9, -0.12, -0.99, 7.0);
     k.boat(-3.6, -15.6, 0.5);
-    at(-7.2, -12.0, () => k.lamp(-7.2, -12.0));
+    at(-6.8, -10.6, () => k.lamp(-6.8, -10.6));
     // stepping stones leading down to the sand
     at(-6.0, -9.6, () => k.stone(-6.0, -9.6, 1.0));
     at(-5.8, -10.8, () => k.stone(-5.8, -10.8, 1.0));
 
-    /* ========================= FARM (east, north of river) ============== */
-    // a proper grid; 5.0 apart leaves 1.4 of clear ground between beds
-    at(5.0, 8.8, () => k.farmPlot(5.0, 8.8, 3.2, 2.4, 'carrot'));
-    at(10.0, 8.8, () => k.farmPlot(10.0, 8.8, 3.2, 2.4, 'tomato'));
-    at(5.0, 3.8, () => k.farmPlot(5.0, 3.8, 3.2, 2.4, 'wheat'));
-    at(10.0, 3.8, () => k.farmPlot(10.0, 3.8, 3.2, 2.4, 'corn'));
-    at(7.5, 11.9, () => k.farmPlot(7.5, 11.9, 4.0, 2.2, 'pumpkin'));
-    at(7.5, 6.3, () => k.scarecrow(7.5, 6.3, 0.4));
-    at(12.6, 6.3, () => k.wheelbarrow(12.6, 6.3, 0.9));
-    at(2.6, 6.3, () => k.wateringCan(2.6, 6.3, 0.4));
-    at(2.6, 10.4, () => k.bucket(2.6, 10.4, 'red'));
-    at(12.4, 10.2, () => k.birdhouse(12.4, 10.2, Math.PI * 1.25));
-    at(12.6, 1.6, () => k.crate(12.6, 1.6, 1.0, 0.3));
+    /* ========================= FARM (east, north of river) ==============
+     * A 2x2 grid plus one long bed. Beds are 4.4 apart in x and 4.0 in z; with
+     * 3.6 and 2.8 of solid respectively that leaves ~0.8-1.2 of clear ground,
+     * comfortably more than the player's 0.68 diameter. */
+    at(4.2, 6.6, () => k.farmPlot(4.2, 6.6, 3.2, 2.4, 'carrot'));
+    at(8.6, 6.6, () => k.farmPlot(8.6, 6.6, 3.2, 2.4, 'tomato'));
+    at(4.2, 2.6, () => k.farmPlot(4.2, 2.6, 3.2, 2.4, 'wheat'));
+    at(8.6, 2.6, () => k.farmPlot(8.6, 2.6, 3.2, 2.4, 'corn'));
+    at(5.0, 10.0, () => k.farmPlot(5.0, 10.0, 3.0, 1.8, 'pumpkin'));
+    at(6.4, 4.6, () => k.scarecrow(6.4, 4.6, 0.4));
+    at(11.2, 5.0, () => k.wheelbarrow(11.2, 5.0, 0.9));
+    at(2.0, 4.6, () => k.wateringCan(2.0, 4.6, 0.4));
+    at(2.2, 8.2, () => k.bucket(2.2, 8.2, 'red'));
+    at(9.4, 9.6, () => k.birdhouse(9.4, 9.6, Math.PI * 1.25));
+    at(11.4, 1.4, () => k.crate(11.4, 1.4, 1.0, 0.3));
 
-    /* ====================== PLAYGROUND (east, south of river) =========== */
-    at(6.6, -3.4, () => k.sandbox(6.6, -3.4, 2.6, 2.2));
-    at(11.2, -4.6, () => k.swing(11.2, -4.6, Math.PI * 0.45));
-    at(6.4, -8.2, () => k.slide(6.4, -8.2, Math.PI));
-    at(10.6, -8.8, () => k.seesaw(10.6, -8.8, Math.PI * 0.3));
-    at(12.6, -1.8, () => k.bench(12.6, -1.8, Math.PI * 1.35));
-    at(3.8, -5.6, () => k.lamp(3.8, -5.6));
-    at(9.0, -1.4, () => k.ball(9.0, -1.4, 'red'));
-    at(8.6, -11.4, () => k.ball(8.6, -11.4, 'yellow'));
+    /* ====================== PLAYGROUND (east, south of river) ===========
+     * Grouped into one compact yard. Spread across the whole south-east
+     * quadrant the equipment read as unrelated objects rather than a park. */
+    at(6.8, -4.2, () => k.sandbox(6.8, -4.2, 2.6, 2.2));
+    at(10.4, -4.4, () => k.slide(10.4, -4.4, Math.PI));
+    at(6.8, -8.0, () => k.swing(6.8, -8.0, Math.PI * 0.5));
+    at(10.2, -7.8, () => k.seesaw(10.2, -7.8, Math.PI * 0.28));
+    at(4.4, -6.4, () => k.bench(4.4, -6.4, Math.PI * 0.5));
+    at(8.4, -1.8, () => k.lamp(8.4, -1.8));
+    at(8.6, -5.9, () => k.ball(8.6, -5.9, 'red'));
+    at(5.4, -10.0, () => k.ball(5.4, -10.0, 'yellow'));
     // crates to hop between, spaced past their collision radii
-    at(3.4, -9.6, () => k.crate(3.4, -9.6, 1.0, 0.2));
-    at(5.2, -11.0, () => k.crate(5.2, -11.0, 0.9, -0.3));
-    at(7.2, -12.0, () => k.stump(7.2, -12.0, 1.0));
+    at(11.6, -2.0, () => k.crate(11.6, -2.0, 1.0, 0.2));
+    at(11.4, -5.6, () => k.crate(11.4, -5.6, 0.9, -0.3));
+    at(4.0, -9.4, () => k.stump(4.0, -9.4, 1.0));
 
     /* ============================== CROSSINGS =========================== */
     k.bridge(0.0, -1.1, 1.265, 6.2);
@@ -745,17 +753,19 @@
     const N = 30;
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2 + 0.2;
-      const r = 13.1 + Math.sin(i * 2.7) * 0.55;
+      // ring radius allows for the canopy: 12.6 + 0.5 wobble + ~0.5 of trunk
+      // collider still lands inside the grass edge at 13.2
+      const r = 12.5 + Math.sin(i * 2.7) * 0.45;
       trees.push([Math.cos(a) * r, Math.sin(a) * r,
                   0.95 + (i % 3) * 0.12, kinds[i % kinds.length]]);
     }
     // clusters that frame the places without cluttering them
-    [[-12.2, 2.4, 1.05, 'pine'], [-11.4, 4.0, 0.95, 'round'],
-     [-2.0, 11.4, 1.0, 'round'], [-0.9, 9.6, 0.9, 'pine'],
-     [-11.6, 10.6, 1.05, 'pine'], [2.0, 1.6, 0.95, 'round'],
+    [[-11.4, 2.4, 1.05, 'pine'], [-10.8, 4.2, 0.95, 'round'],
+     [-2.0, 11.0, 1.0, 'round'], [-0.9, 9.2, 0.9, 'pine'],
+     [-10.6, 10.0, 1.05, 'pine'], [2.0, 1.6, 0.95, 'round'],
      [3.0, -1.4, 0.9, 'pine'],   [-0.6, -8.2, 1.0, 'round'],
-     [-1.8, -10.4, 0.95, 'pine'],[13.0, -0.2, 1.0, 'round'],
-     [1.2, 12.4, 0.95, 'pine'],  [-12.8, -3.6, 1.0, 'round']
+     [-1.8, -10.0, 0.95, 'pine'],[12.0, -0.2, 1.0, 'round'],
+     [1.2, 11.6, 0.95, 'pine'],  [-11.8, -3.6, 1.0, 'round']
     ].forEach((t) => trees.push(t));
 
     trees.forEach((t, i) => {
