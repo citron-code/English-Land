@@ -164,21 +164,8 @@
       }
     }
 
-    /* Terrain features are drawn from the SAME shape definitions the height
-     * field uses, so the sandstone bands land exactly on the slopes. Filling
-     * the grown outline and then the plain outline over it leaves a clean band,
-     * without the internal arcs a stroked union would show. */
+    // The ground is flat now; the river is the only terrain feature painted.
     const T = terrain;
-    ctx.fillStyle = C.colors.cliffDark;
-    T.plateauPath(ctx, PX, PY, PW, T.shapes.cliffBand + 0.12); ctx.fill();
-    T.rampPath(ctx, PX, PY, PW, T.shapes.ramp.band + 0.20); ctx.fill();
-    ctx.fillStyle = C.colors.cliff;
-    T.plateauPath(ctx, PX, PY, PW, T.shapes.cliffBand * 0.5); ctx.fill();
-    T.rampPath(ctx, PX, PY, PW, T.shapes.ramp.band * 0.4); ctx.fill();
-    ctx.fillStyle = C.colors.grassHigh;
-    T.plateauPath(ctx, PX, PY, PW, -0.18); ctx.fill();
-    ctx.fillStyle = C.colors.grass;
-    T.rampPath(ctx, PX, PY, PW, -0.30); ctx.fill();
 
     /* ------------------------------------------------------------- paths */
     const stroke = (pts, w, colour) => {
@@ -219,10 +206,8 @@
       [[7.5, 3.0], [7.5, 6.3], [7.5, 10.4]],                       // farm spine
       [[0.6, -2.2], [3.6, -4.2], [6.6, -5.6], [9.4, -6.2]],        // bridge -> playground
       [[-5.2, -4.2], [-7.6, -6.0], [-9.8, -7.6]],                  // camp -> pool
-      [[-5.4, -6.6], [-7.6, -4.4], [-9.4, -2.8]],                  // camp -> incline foot
-      [[-9.4, -2.8], [-9.4, 1.8]],                                 // up the incline
-      [[-9.4, 1.8], [-8.6, 4.6], [-7.4, 6.9]],                     // incline -> house
-      [[-7.0, 7.0], [-4.8, 6.2], [-2.8, 4.6]]                      // house -> lookout
+      [[-5.2, -4.2], [-6.2, -1.0], [-6.6, 3.0], [-7.0, 6.9]],      // camp -> house
+      [[-7.0, 7.0], [-5.4, 5.4], [-4.4, 3.6]]                      // house -> riverside
     ];
     // wide enough to read as a route from the normal camera pitch; too thin and
     // the island loses its legible structure and just looks scattered
@@ -401,15 +386,7 @@
     /* ---------------------------------------------------------- the camp */
     const kit = global.createPropKit(scene);
     kit.hAt = terrain.heightAt;
-    /* Read the drop off the terrain rather than guessing it: sample the
-     * channel bed just upstream of the lip and just downstream in the plunge
-     * pool, so the sheet always spans exactly the cliff it falls over. */
-    const F = terrain.shapes.fallAt;
-    const fUp = terrain.heightAt(F.x - Math.sin(F.ry) * 1.0, F.z - Math.cos(F.ry) * 1.0);
-    const fDn = terrain.heightAt(F.x + Math.sin(F.ry) * 1.6, F.z + Math.cos(F.ry) * 1.6);
-    kit.waterfall(F.x, F.z,
-      fUp + terrain.shapes.riverDepth * 0.42,
-      fDn + terrain.shapes.riverDepth * 0.42, 2.7, F.ry);
+    // No waterfall: it fell off the terrace, and the ground is flat now.
     layout(kit, terrain);
 
     /* Merge the static props by material. A few hundred small meshes is a few
@@ -672,12 +649,12 @@
     at(-4.2, 10.0, () => k.flowerBed(-4.2, 10.0, 1.3, 1.3, ['pink', 'purple']));
     at(-8.4, 12.0, () => k.hedge(-8.4, 12.0, 3.0, 0.9));
     at(-6.2, 6.4, () => k.lamp(-6.2, 6.4));
-    at(-3.9, 5.6, () => k.bench(-3.9, 5.6, Math.PI * 0.75));
-    at(-5.6, 4.4, () => k.birdbath(-5.6, 4.4));
+    at(-4.9, 5.6, () => k.bench(-4.9, 5.6, Math.PI * 0.75));
+    at(-6.4, 4.4, () => k.birdbath(-6.4, 4.4));
     at(-11.2, 7.6, () => k.birdhouse(-11.2, 7.6, Math.PI * 0.6));
-    // a railed lookout on the cliff edge above the falls
-    at(-2.6, 4.4, () => k.fenceRun(-3.4, 5.2, -1.6, 3.4));
-    at(-3.6, 3.0, () => k.lamp(-3.6, 3.0));
+    // a railing along the west bank, clear of the channel itself
+    at(-4.3, 4.9, () => k.fenceRun(-4.5, 6.4, -4.1, 3.4));
+    at(-4.6, 2.6, () => k.lamp(-4.6, 2.6));
 
     /* ============================ CAMP (south-west) ===================== */
     const CX = -5.2, CZ = -4.2;
@@ -686,11 +663,14 @@
     // stumps on a ring, spaced so you can always walk out between them
     [[2.3, 0], [0, 2.3], [-2.3, 0], [0, -2.3]].forEach((o, i) =>
       at(CX + o[0], CZ + o[1], () => k.stump(CX + o[0], CZ + o[1], 0.95 + i * 0.03)));
-    at(-2.2, -1.2, () => k.table(-2.2, -1.2));
-    at(-2.2, -1.2, () => k.tableSet(-2.2, -1.2));
-    at(-0.8, -0.7, () => k.chair(-0.8, -0.7, -1.2));
-    at(-3.6, -0.6, () => k.chair(-3.6, -0.6, 2.2));
-    at(-2.0, -2.7, () => k.chair(-2.0, -2.7, 0.1));
+    /* The picnic set sits WEST of the camp, clear of the bridge. At its old
+     * spot the table's collider reached the bridge's western approach and you
+     * could not get onto the deck at all. */
+    at(-4.2, 0.9, () => k.table(-4.2, 0.9));
+    at(-4.2, 0.9, () => k.tableSet(-4.2, 0.9));
+    at(-2.8, 1.3, () => k.chair(-2.8, 1.3, -1.2));
+    at(-5.6, 1.4, () => k.chair(-5.6, 1.4, 2.2));
+    at(-4.1, -0.6, () => k.chair(-4.1, -0.6, 0.1));
     at(-8.2, -2.2, () => k.bench(-8.2, -2.2, Math.PI * 0.5));
     at(-7.4, -0.6, () => k.hedge(-7.4, -0.6, 0.9, 2.6));
     at(-3.0, -6.4, () => k.lamp(-3.0, -6.4));
