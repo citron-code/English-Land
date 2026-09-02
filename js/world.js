@@ -406,7 +406,6 @@
       m.name = 'camp_' + k;
       m.isPickable = false;
       m.receiveShadows = true;
-      m.convertToFlatShadedMesh();
       m.freezeWorldMatrix();
       merged.push(m);
       shadow.addShadowCaster(m);

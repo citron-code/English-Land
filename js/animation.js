@@ -19,7 +19,7 @@
     stride: 1.05,
 
     walk: {
-      leg: 0.62, arm: 0.50, armOut: 0.05,
+      leg: 0.52, arm: 0.50, armOut: 0.05,
       bob: 0.032, twist: 0.10, roll: 0.045, lean: 0.13, headBob: 0.035
     },
 
@@ -47,7 +47,7 @@
     stretch: { after: [10, 18], dur: 2.6, arm: 2.15, arch: 0.17, head: 0.24, rise: 0.022 },
 
     air: {
-      tuckFront: -0.62, tuckBack: 0.34, armRise: -1.35, armOut: 0.22,
+      tuckFront: -0.50, tuckBack: 0.28, armRise: -1.35, armOut: 0.22,
       leanRise: -0.10, leanFall: 0.16,
       land: { squash: 0.17, dur: 0.24 }
     },

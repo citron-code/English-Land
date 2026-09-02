@@ -92,8 +92,8 @@
     };
     const box = (n, w, h, d) => B.MeshBuilder.CreateBox(n, { width: w, height: h, depth: d }, scene);
     const cyl = (n, dT, dB, h, t) => B.MeshBuilder.CreateCylinder(n,
-      { diameterTop: dT, diameterBottom: dB, height: h, tessellation: t || 12 }, scene);
-    const sph = (n, d, s) => B.MeshBuilder.CreateSphere(n, { diameter: d, segments: s || 8 }, scene);
+      { diameterTop: dT, diameterBottom: dB, height: h, tessellation: t || 16 }, scene);
+    const sph = (n, d, s) => B.MeshBuilder.CreateSphere(n, { diameter: d, segments: s || 12 }, scene);
 
     kit.solid    = (x, z, r) => kit.solids.push({ kind: 'circle', x, z, r });
     kit.solidBox = (x, z, hw, hd) => kit.solids.push({ kind: 'box', x, z, hw, hd });
