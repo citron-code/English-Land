@@ -149,6 +149,18 @@
       return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
     };
 
+    /* Place a part in a prop's OWN frame: `u` runs along the way the prop
+     * faces (its ry), `v` runs across it.
+     *
+     * Several builders added their offsets straight to world x/z, which is
+     * correct only while ry is 0. Rotate the prop and the parts stayed put
+     * while the prop turned under them - the swing's A-frames ended up facing
+     * across their own top bar, which is why it read as scaffolding. */
+    const local = (x, z, ry, u, v) => ({
+      x: x + Math.sin(ry) * u + Math.cos(ry) * v,
+      z: z + Math.cos(ry) * u - Math.sin(ry) * v
+    });
+
     kit.solid    = (x, z, r) => kit.solids.push({ kind: 'circle', x, z, r });
     kit.solidBox = (x, z, hw, hd) => kit.solids.push({ kind: 'box', x, z, hw, hd });
     kit.platform = (x, z, hw, hd, top) => kit.platforms.push({ x, z, hw, hd, top });
@@ -539,9 +551,14 @@
       const h = 0.34;
       [[0, -d / 2, w + 0.4, 0.4], [0, d / 2, w + 0.4, 0.4],
        [-w / 2, 0, 0.4, d], [w / 2, 0, 0.4, d]].forEach((r) => {
-        const b = box('sbr', r[2], h, r[3]);
+        const b = box('sbr', r[2], h, r[3], 0.07);
         b.position.set(x + r[0], h / 2, z + r[1]);
-        add(b, 'blue', true);
+        add(b, 'woodDark', true);
+        // a capping rail, a value lighter: frame and sand at the same value made
+        // the whole box read as one pale slab
+        const capr = box('sbrc', r[2] * 0.99, 0.08, r[3] * 0.99, 0.035);
+        capr.position.set(x + r[0], h + 0.01, z + r[1]);
+        add(capr, 'wood', false);
       });
       const sand = box('sbs', w, 0.24, d);
       sand.position.set(x, 0.14, z); add(sand, 'sand', false);
@@ -565,75 +582,139 @@
 
     kit.swing = (x, z, ry) => {
       ry = ry || 0;
-      const H = 2.3, span = 2.2;
-      [-1, 1].forEach((side) => {
-        [-1, 1].forEach((lean) => {
-          const l = cyl('swl', 0.13, 0.15, H, 8);
-          l.rotation.set(lean * 0.22, ry, 0);
-          l.position.set(x + Math.cos(ry) * side * span / 2,
-                         H / 2, z - Math.sin(ry) * side * span / 2 + lean * 0.25);
+      const at = (u, v) => local(x, z, ry, u, v);
+      const H = 2.35, span = 2.70, splay = 0.46;
+      const lean = Math.atan2(splay, H);
+
+      /* Two A-frames, one at each end of the bar. The feet splay along +/-u,
+       * which is the prop's OWN axis - the old version pushed them along world
+       * Z, so as soon as the swing was rotated the frames splayed across their
+       * own bar and the whole thing read as scaffolding. */
+      [-1, 1].forEach((sv) => {
+        [-1, 1].forEach((su) => {
+          const p = at(su * splay / 2, sv * span / 2);
+          const l = cyl('swl', 0.12, 0.155, H, 8);
+          l.rotation.set(-su * lean, ry, 0);
+          l.position.set(p.x, H / 2, p.z);
           add(l, 'metal', true);
         });
+        // a collar where the legs meet, so the join is not two poles crossing
+        const c = at(0, sv * span / 2);
+        const cap = sph('swc', 0.30, 8);
+        cap.scaling.y = 0.6;
+        cap.position.set(c.x, H - 0.04, c.z); add(cap, 'metal', false);
       });
-      const bar = cyl('swb', 0.13, 0.13, span + 0.3, 8);
-      bar.rotation.set(0, 0, Math.PI / 2);
-      bar.rotation.y = ry;
+
+      const bar = cyl('swb', 0.13, 0.13, span + 0.34, 8);
+      bar.rotation.set(0, ry, Math.PI / 2);
       bar.position.set(x, H - 0.06, z); add(bar, 'metal', true);
-      // seat on two ropes
-      [-0.28, 0.28].forEach((o) => {
-        const r = cyl('swr', 0.045, 0.045, 1.35, 6);
-        r.position.set(x + Math.cos(ry) * o, H - 0.72, z - Math.sin(ry) * o);
-        add(r, 'woodDark', false);
+
+      // two seats, because one swing on a wide frame looks like a missing part
+      [-1, 1].forEach((sd) => {
+        const cv = sd * 0.62;
+        [-0.24, 0.24].forEach((o) => {
+          const p = at(0, cv + o);
+          const r = cyl('swr', 0.05, 0.05, 1.30, 6);
+          r.position.set(p.x, H - 0.71, p.z); add(r, 'woodDark', false);
+        });
+        const sp = at(0, cv);
+        const seat = box('sws', 0.62, 0.10, 0.30, 0.04);
+        seat.position.set(sp.x, H - 1.38, sp.z); seat.rotation.y = ry;
+        add(seat, sd > 0 ? 'red' : 'blue', true);
       });
-      const seat = box('sws', 0.75, 0.10, 0.34);
-      seat.position.set(x, H - 1.42, z); seat.rotation.y = ry;
-      add(seat, 'red', true);
-      kit.solid(x + Math.cos(ry) * span / 2, z - Math.sin(ry) * span / 2, 0.30);
-      kit.solid(x - Math.cos(ry) * span / 2, z + Math.sin(ry) * span / 2, 0.30);
+
+      [-1, 1].forEach((sv) => {
+        const p = at(0, sv * span / 2);
+        kit.solid(p.x, p.z, 0.34);
+      });
     };
 
     /* A little climbing frame: two steps up to a deck, and a slide down.
      * Every level is a platform, so it is genuinely climbable. */
+    /* Slide. Local frame: +u runs DOWN the slide, the stairs are at -u.
+     *
+     * The old one came apart into pieces because its two steps were slabs
+     * floating at 0.42 and 0.74 with nothing underneath them, and because the
+     * ramp rails were pinned to a fixed world height instead of riding the
+     * ramp's own slope. */
     kit.slide = (x, z, ry) => {
       ry = ry || 0;
-      const dirX = Math.sin(ry), dirZ = Math.cos(ry);   // "down the slide"
-      const deckY = 1.05;
+      const at = (u, v) => local(x, z, ry, u, v);
+      const deckY = 1.10, deckTop = deckY + 0.09;
 
-      const deck = box('sld', 1.20, 0.18, 1.20);
-      deck.position.set(x, deckY, z); deck.rotation.y = ry;
+      const dp = at(0, 0);
+      const deck = box('sld', 1.24, 0.18, 1.24, 0.05);
+      deck.position.set(dp.x, deckY, dp.z); deck.rotation.y = ry;
       add(deck, 'plank', true);
-      kit.platform(x, z, 0.62, 0.62, deckY + 0.09);
+      kit.platform(dp.x, dp.z, 0.64, 0.64, deckTop);
 
-      [-1, 1].forEach((sx) => [-1, 1].forEach((sz) => {
-        const l = cyl('sll', 0.12, 0.14, deckY, 8);
-        l.position.set(x + sx * 0.48, deckY / 2, z + sz * 0.48);
-        add(l, 'metal', false);
-      }));
-
-      // steps on the back side
-      [[0.42, -1.05], [0.74, -1.72]].forEach((s) => {
-        const sx = x + dirX * s[1], sz = z + dirZ * s[1];
-        const st = box('sls', 1.0, 0.16, 0.52);
-        st.position.set(sx, s[0], sz);
-        st.rotation.y = ry;
-        add(st, 'plank', true);
-        kit.platform(sx, sz, 0.52, 0.28, s[0] + 0.08);
+      [[-0.50, -0.50], [-0.50, 0.50], [0.50, -0.50], [0.50, 0.50]].forEach((c, i) => {
+        const p = at(c[0], c[1]);
+        const l = cyl('sll' + i, 0.13, 0.16, deckY, 8);
+        l.position.set(p.x, deckY / 2, p.z); add(l, 'metal', false);
       });
 
-      /* The ramp. Rotating +0.46 about X drops the far (+Z) end, so the slide
-       * descends away from the deck; a negative angle raises it instead and
-       * the slide runs uphill. */
-      const ramp = box('slr', 0.95, 0.12, 2.35);
-      ramp.rotation.set(0.46, ry, 0);
-      ramp.position.set(x + dirX * 1.20, 0.56, z + dirZ * 1.20);
+      /* Stairs: two sloped stringers with treads laid across them. */
+      const uBot = -2.20, uTop = -0.62;
+      const run = uTop - uBot, rise = deckTop;
+      const sLen = Math.hypot(run, rise), sAng = Math.atan2(rise, run);
+      [-1, 1].forEach((sv) => {
+        const p = at((uBot + uTop) / 2, sv * 0.54);
+        const st = box('slg' + sv, 0.12, 0.24, sLen, 0.04);
+        st.rotation.set(-sAng, ry, 0);
+        st.position.set(p.x, rise / 2, p.z);
+        add(st, 'woodDark', true);
+      });
+      for (let i = 1; i <= 4; i++) {
+        const f = i / 5;
+        const p = at(uBot + run * f, 0);
+        const tr = box('slt' + i, 1.04, 0.11, 0.36, 0.035);
+        tr.position.set(p.x, rise * f, p.z); tr.rotation.y = ry;
+        add(tr, 'plank', true);
+        kit.platform(p.x, p.z, 0.52, 0.20, rise * f + 0.055);
+      }
+      // handrails, riding the same slope as the stringers
+      [-1, 1].forEach((sv) => {
+        const p = at((uBot + uTop) / 2, sv * 0.60);
+        const rl = cyl('slh' + sv, 0.075, 0.075, sLen, 6);
+        rl.rotation.set(Math.PI / 2 - sAng, ry, 0);
+        rl.position.set(p.x, rise / 2 + 0.66, p.z);
+        add(rl, 'orange', false);
+        [[uBot + 0.12, 0.30], [uTop - 0.10, rise - 0.06]].forEach((q, j) => {
+          const pp = at(q[0], sv * 0.60);
+          const po = cyl('slhp' + sv + j, 0.07, 0.07, q[1] + 0.60, 6);
+          po.position.set(pp.x, (q[1] + 0.60) / 2, pp.z);
+          add(po, 'orange', false);
+        });
+      });
+
+      /* Ramp. +0.44 about X drops the +u end, so the slide descends away from
+       * the deck; a negative angle would run it uphill. */
+      const a = 0.44, L = 2.60;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      const rU = 0.62 + (L / 2) * ca, rY = deckTop - (L / 2) * sa;
+      const rp = at(rU, 0);
+      const ramp = box('slr', 0.98, 0.12, L, 0.05);
+      ramp.rotation.set(a, ry, 0);
+      ramp.position.set(rp.x, rY, rp.z);
       add(ramp, 'yellow', true);
-      [-1, 1].forEach((sx) => {
-        const rail = box('slk', 0.10, 0.28, 2.35);
-        rail.rotation.set(0.46, ry, 0);
-        rail.position.set(x + dirX * 1.20 + Math.cos(ry) * sx * 0.50, 0.66,
-                          z + dirZ * 1.20 - Math.sin(ry) * sx * 0.50);
+      // rails ride the ramp's own normal, not a fixed world height
+      [-1, 1].forEach((sv) => {
+        const q = at(rU - 0.15 * sa, sv * 0.54);
+        const rail = box('slk' + sv, 0.11, 0.30, L, 0.04);
+        rail.rotation.set(a, ry, 0);
+        rail.position.set(q.x, rY + 0.15 * ca, q.z);
         add(rail, 'orange', false);
       });
+      // a short guard either side of the mouth, so the deck has an edge
+      [-1, 1].forEach((sv) => {
+        const q = at(0.54, sv * 0.56);
+        const g = cyl('slgd' + sv, 0.09, 0.09, 0.52, 6);
+        g.position.set(q.x, deckTop + 0.26, q.z);
+        add(g, 'orange', false);
+      });
+
+      kit.solid(dp.x, dp.z, 0.62);
     };
 
     /* -------------------------------------------------------------- pool */
@@ -867,21 +948,27 @@
       const base = cyl('ssb', 0.20, 0.30, 0.16, 8);
       base.rotation.set(0, ry, Math.PI / 2);
       base.position.set(x, 0.58, z); add(base, 'metal', true);
-      const plank = box('ssp', 0.42, 0.14, 3.10);
-      plank.rotation.set(0.16, ry, 0);
-      plank.position.set(x, 0.60, z); add(plank, 'yellow', true);
+      // shorter and thicker: at 3.1 long and 0.14 thick it read as a plank
+      // someone had balanced on a cone
+      const tilt = 0.17, PL = 2.60;
+      const at = (u, v) => local(x, z, ry, u, v);
+      const plank = box('ssp', 0.46, 0.17, PL, 0.06);
+      plank.rotation.set(tilt, ry, 0);
+      plank.position.set(x, 0.62, z); add(plank, 'yellow', true);
       [-1, 1].forEach((sd) => {
-        const seat = box('sss', 0.46, 0.10, 0.44);
-        seat.rotation.y = ry;
-        seat.position.set(x + Math.sin(ry) * sd * 1.35,
-                          0.60 - sd * Math.sin(0.16) * 1.35 + 0.10,
-                          z + Math.cos(ry) * sd * 1.35);
+        const u = sd * 1.10, y = 0.62 - sd * Math.sin(tilt) * 1.10;
+        const sp = at(u, 0);
+        const seat = box('sss', 0.50, 0.11, 0.42, 0.05);
+        seat.rotation.set(tilt, ry, 0);
+        seat.position.set(sp.x, y + 0.13, sp.z);
         add(seat, sd > 0 ? 'red' : 'blue', false);
-        const grip = cyl('ssg', 0.07, 0.07, 0.34, 6);
+
+        const gp = at(sd * 0.80, 0);
+        const post = cyl('ssgp' + sd, 0.07, 0.07, 0.34, 6);
+        post.position.set(gp.x, y + 0.26, gp.z); add(post, 'metal', false);
+        const grip = cyl('ssg' + sd, 0.075, 0.075, 0.40, 6);
         grip.rotation.set(0, ry, Math.PI / 2);
-        grip.position.set(x + Math.sin(ry) * sd * 1.05,
-                          0.60 - sd * Math.sin(0.16) * 1.05 + 0.34,
-                          z + Math.cos(ry) * sd * 1.05);
+        grip.position.set(gp.x, y + 0.42, gp.z);
         add(grip, 'metal', false);
       });
       kit.solid(x, z, 0.40);
