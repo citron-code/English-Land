@@ -19,11 +19,11 @@
   const PALETTE = {
     trunk:     '#8b5e3c',
     trunkDark: '#6f4a2f',
-    pineA:     '#2f7a45',
-    pineB:     '#3d9455',
-    leafA:     '#5cb85a',
-    leafB:     '#7ac96a',
-    bush:      '#67bf5f',
+    pineA:     '#3c8f52',
+    pineB:     '#52ad69',
+    leafA:     '#63c261',
+    leafB:     '#89d878',
+    bush:      '#72cb67',
 
     wall:      '#f6e7c9',
     wallTrim:  '#e6d2ab',
@@ -46,8 +46,8 @@
     blue:      '#4aa8d8',
     teal:      '#3fbfae',
 
-    stone:     '#b9b3a8',
-    stoneDark: '#8f8877',
+    stone:     '#c6bfb1',
+    stoneDark: '#9d9584',
     metal:     '#7d8794',
     soil:      '#7d5a3c',
     sand:      '#efdda4',
@@ -90,10 +90,64 @@
       if (caster) kit.casters.push(m);
       return m;
     };
-    const box = (n, w, h, d) => B.MeshBuilder.CreateBox(n, { width: w, height: h, depth: d }, scene);
+    /* Rounded box.
+     *
+     * Raw CreateBox corners are most of what made this library read as
+     * programmer art: in this style almost every man-made object has softened
+     * edges, and a razor-sharp box next to a sphere always looks unfinished.
+     *
+     * Built by exploding a sphere's octants out to the box corners - each
+     * vertex keeps its `r`-long offset from the corner its own direction points
+     * at, and the quads that end up spanning two corners flatten into the box's
+     * faces. Normals are recomputed afterwards or those faces keep the sphere's
+     * curved shading.
+     *
+     * `sg` must never return 0. The ring sitting exactly on an axis plane would
+     * otherwise stay at the centre and pinch the box through its middle.
+     */
+    const rbox = (n, w, h, d, r, seg) => {
+      const rad = Math.max(0.004, Math.min(r, w / 2, h / 2, d / 2));
+      const m = B.MeshBuilder.CreateSphere(n,
+        { diameter: rad * 2, segments: seg || 6 }, scene);
+      const pos = m.getVerticesData(B.VertexBuffer.PositionKind);
+      const hx = w / 2 - rad, hy = h / 2 - rad, hz = d / 2 - rad;
+      const sg = (v) => (v >= 0 ? 1 : -1);
+      for (let i = 0; i < pos.length; i += 3) {
+        pos[i]     += sg(pos[i])     * hx;
+        pos[i + 1] += sg(pos[i + 1]) * hy;
+        pos[i + 2] += sg(pos[i + 2]) * hz;
+      }
+      m.setVerticesData(B.VertexBuffer.PositionKind, pos);
+      const nrm = [];
+      B.VertexData.ComputeNormals(pos, m.getIndices(), nrm);
+      m.setVerticesData(B.VertexBuffer.NormalKind, nrm);
+      m.refreshBoundingInfo();
+      return m;
+    };
+
+    /* Default bevel is a fraction of the smallest side, so a fence rail and a
+     * house wall get proportionate softening rather than the same absolute
+     * radius. Pass an explicit r for anything that needs a crisp edge. */
+    const box = (n, w, h, d, r, seg) =>
+      rbox(n, w, h, d, r === undefined ? Math.min(Math.min(w, h, d) * 0.18, 0.055) : r, seg);
+    const hardBox = (n, w, h, d) =>
+      B.MeshBuilder.CreateBox(n, { width: w, height: h, depth: d }, scene);
     const cyl = (n, dT, dB, h, t) => B.MeshBuilder.CreateCylinder(n,
       { diameterTop: dT, diameterBottom: dB, height: h, tessellation: t || 16 }, scene);
     const sph = (n, d, s) => B.MeshBuilder.CreateSphere(n, { diameter: d, segments: s || 12 }, scene);
+
+    /* Deterministic jitter, hashed from the prop's own position.
+     *
+     * Several builders used Math.random(), which meant the island came out
+     * subtly different on every reload - the same hedge grew different lumps
+     * each time, and no screenshot could be compared against the last one.
+     * Keyed on (x, z, i) the variation is just as varied and always repeats. */
+    const jit = (x, z, i) => {
+      let h = Math.imul(Math.round(x * 73.1) ^ 0x9e37, 0x85eb);
+      h = Math.imul(h ^ Math.round(z * 131.7), 0xc2b2);
+      h = Math.imul(h ^ (i * 0x27d4), 0x165667);
+      return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
+    };
 
     kit.solid    = (x, z, r) => kit.solids.push({ kind: 'circle', x, z, r });
     kit.solidBox = (x, z, hw, hd) => kit.solids.push({ kind: 'box', x, z, hw, hd });
@@ -121,19 +175,26 @@
     };
 
     /* -------------------------------------------------------------- trees */
+    /* Four tiers, each overlapping the one below by about half its height.
+     * Three barely-touching cones read as a stack of separate hats; the overlap
+     * is what turns them into one soft stepped silhouette. Tiers alternate
+     * value so the steps stay legible from a distance, and each is rotated off
+     * its neighbour so the facets never line up into a seam. */
     kit.pine = (x, z, s, ry) => {
       s = s || 1; ry = ry || 0;
-      const t = cyl('pt', 0.26 * s, 0.34 * s, 1.0 * s, 8);
-      t.position.set(x, 0.5 * s, z); add(t, 'trunk', true);
+      const t = cyl('pt', 0.24 * s, 0.32 * s, 0.95 * s, 8);
+      t.position.set(x, 0.47 * s, z); add(t, 'trunk', true);
       const tiers = [
-        { y: 1.05, d: 2.15, h: 1.30, c: 'pineA' },
-        { y: 1.85, d: 1.70, h: 1.20, c: 'pineB' },
-        { y: 2.60, d: 1.15, h: 1.05, c: 'pineA' }
+        { y: 0.92, d: 2.20, h: 1.35, c: 'pineA' },
+        { y: 1.52, d: 1.86, h: 1.20, c: 'pineB' },
+        { y: 2.06, d: 1.44, h: 1.05, c: 'pineA' },
+        { y: 2.56, d: 0.96, h: 0.92, c: 'pineB' }
       ];
       tiers.forEach((tr, i) => {
-        const c = cyl('pc' + i, 0, tr.d * s, tr.h * s, 8);
+        const wob = 1 + (jit(x, z, i) - 0.5) * 0.10;
+        const c = cyl('pc' + i, 0, tr.d * s * wob, tr.h * s, 8);
         c.position.set(x, tr.y * s, z);
-        c.rotation.y = ry + i * 0.4;
+        c.rotation.y = ry + i * 0.52;
         add(c, tr.c, true);
       });
       kit.solid(x, z, 0.45 * s);
@@ -174,10 +235,15 @@
 
     kit.bush = (x, z, s) => {
       s = s || 1;
-      [[0, 0, 0.9], [-0.3, -0.05, 0.7], [0.32, 0.02, 0.66]].forEach((b, i) => {
-        const c = sph('bs' + i, b[2] * s, 8);
-        c.scaling.y = 0.8;
-        c.position.set(x + b[0] * s, 0.32 * s + b[1], z + b[1] * s);
+      // five lobes rather than three, and a low back one, so the silhouette has
+      // a shoulder instead of reading as two balls pushed together
+      const lobes = [[0, 0.34, 0, 0.92], [-0.34, 0.26, -0.06, 0.72],
+                     [0.33, 0.28, 0.05, 0.70], [-0.05, 0.30, 0.30, 0.62],
+                     [0.12, 0.48, -0.16, 0.58]];
+      lobes.forEach((b, i) => {
+        const c = sph('bs' + i, b[3] * s, 8);
+        c.scaling.y = 0.82;
+        c.position.set(x + b[0] * s, b[1] * s, z + b[2] * s);
         add(c, i % 2 ? 'bush' : 'leafA', false);
       });
       kit.solid(x, z, 0.42 * s);
@@ -365,62 +431,89 @@
     kit.sign = (x, z, ry) => {
       ry = ry || 0;
       [-0.32, 0.32].forEach((o) => {
-        const p = box('sp', 0.11, 1.05, 0.11);
+        const p = box('sp', 0.15, 1.05, 0.15);
         p.position.set(x + Math.cos(ry) * o, 0.52, z - Math.sin(ry) * o);
         p.rotation.y = ry; add(p, 'woodDark', false);
       });
-      const bd = box('sb', 1.05, 0.80, 0.10);
+      const bd = box('sb', 1.10, 0.84, 0.12);
       bd.position.set(x, 1.18, z); bd.rotation.y = ry; add(bd, 'woodDark', true);
-      const face = box('sf', 0.88, 0.64, 0.06);
-      face.position.set(x + Math.sin(ry) * 0.05, 1.18, z + Math.cos(ry) * 0.05);
-      face.rotation.y = ry; add(face, 'stoneDark', false);
+      /* A pale board inside a dark frame, plus two painted bars. A blank slab
+       * the same value as its own frame reads as an unfinished prop. */
+      const face = box('sf', 0.90, 0.64, 0.08);
+      face.position.set(x + Math.sin(ry) * 0.04, 1.19, z + Math.cos(ry) * 0.04);
+      face.rotation.y = ry; add(face, 'plank', false);
+      [[0.10, 0.60], [-0.10, 0.42]].forEach((ln, i) => {
+        const t = box('st' + i, ln[1], 0.075, 0.05, 0.02);
+        t.position.set(x + Math.sin(ry) * 0.085, 1.19 + ln[0], z + Math.cos(ry) * 0.085);
+        t.rotation.y = ry; add(t, 'woodDark', false);
+      });
       kit.solid(x, z, 0.40);
     };
 
     /* ------------------------------------------------- table, chairs, etc */
     kit.table = (x, z) => {
-      const top = cyl('tt', 1.55, 1.55, 0.14, 16);
-      top.position.set(x, 0.76, z); add(top, 'plank', true);
-      const post = cyl('tp', 0.16, 0.20, 0.72, 8);
-      post.position.set(x, 0.38, z); add(post, 'metal', false);
-      const foot = cyl('tf', 0.70, 0.80, 0.07, 12);
-      foot.position.set(x, 0.04, z); add(foot, 'metal', false);
+      const top = cyl('tt', 1.55, 1.50, 0.12, 16);
+      top.position.set(x, 0.78, z); add(top, 'plank', true);
+      // a shaded rim under the top, or the table reads as a disc on a stick
+      const rim = cyl('ttr', 1.46, 1.34, 0.10, 16);
+      rim.position.set(x, 0.68, z); add(rim, 'woodDark', false);
+      const post = cyl('tp', 0.24, 0.30, 0.66, 8);
+      post.position.set(x, 0.35, z); add(post, 'metal', false);
+      const foot = cyl('tf', 0.62, 0.86, 0.10, 12);
+      foot.position.set(x, 0.05, z); add(foot, 'metal', false);
       kit.solid(x, z, 0.80);
     };
 
     kit.chair = (x, z, ry) => {
       ry = ry || 0;
-      const seat = cyl('cs', 0.62, 0.62, 0.10, 12);
-      seat.position.set(x, 0.46, z); add(seat, 'plank', true);
-      const back = box('cb', 0.60, 0.55, 0.08);
-      back.position.set(x - Math.sin(ry) * 0.26, 0.76, z - Math.cos(ry) * 0.26);
-      back.rotation.y = ry; add(back, 'plank', false);
+      // a round seat under a square back read as two different chairs
+      const seat = box('cs', 0.60, 0.11, 0.58, 0.08);
+      seat.position.set(x, 0.46, z); seat.rotation.y = ry; add(seat, 'plank', true);
+      const back = box('cb', 0.58, 0.56, 0.10, 0.05);
+      back.position.set(x - Math.sin(ry) * 0.24, 0.76, z - Math.cos(ry) * 0.24);
+      back.rotation.set(-0.10, ry, 0); add(back, 'plank', false);
       for (let i = 0; i < 4; i++) {
         const a = ry + Math.PI / 4 + i * Math.PI / 2;
-        const l = cyl('cl', 0.06, 0.06, 0.46, 6);
-        l.position.set(x + Math.cos(a) * 0.22, 0.23, z + Math.sin(a) * 0.22);
+        const l = cyl('cl', 0.075, 0.085, 0.46, 6);
+        l.position.set(x + Math.cos(a) * 0.21, 0.23, z + Math.sin(a) * 0.21);
         add(l, 'metal', false);
       }
       kit.solid(x, z, 0.36);
     };
 
     kit.birdbath = (x, z) => {
-      const p = cyl('bp', 0.22, 0.34, 0.85, 10);
-      p.position.set(x, 0.42, z); add(p, 'stone', true);
-      const bowl = cyl('bb', 0.92, 0.62, 0.22, 14);
-      bowl.position.set(x, 0.95, z); add(bowl, 'stone', true);
-      const w = cyl('bw', 0.76, 0.76, 0.06, 14);
-      w.position.set(x, 1.03, z); add(w, 'poolWater', false);
+      const foot = cyl('bpf', 0.52, 0.66, 0.10, 12);
+      foot.position.set(x, 0.05, z); add(foot, 'stoneDark', false);
+      const p = cyl('bp', 0.26, 0.36, 0.82, 10);
+      p.position.set(x, 0.46, z); add(p, 'stone', true);
+      /* A steep cone read as a funnel on a stick. A shallow basin with its own
+       * rim, and water sunk below that rim, reads as something holding water. */
+      const bowl = cyl('bb', 1.00, 0.78, 0.14, 14);
+      bowl.position.set(x, 0.94, z); add(bowl, 'stone', true);
+      const lip = B.MeshBuilder.CreateTorus('bbl',
+        { diameter: 0.98, thickness: 0.10, tessellation: 14 }, scene);
+      lip.position.set(x, 1.00, z); add(lip, 'stoneDark', false);
+      const w = cyl('bw', 0.86, 0.80, 0.05, 14);
+      w.position.set(x, 0.985, z); add(w, 'poolWater', false);
       kit.solid(x, z, 0.42);
     };
 
     kit.campfire = (x, z) => {
       for (let i = 0; i < 7; i++) {
-        const a = (i / 7) * Math.PI * 2;
-        const s = sph('cf', 0.30 + Math.random() * 0.1, 6);
-        s.scaling.y = 0.7;
-        s.position.set(x + Math.cos(a) * 0.55, 0.10, z + Math.sin(a) * 0.55);
-        add(s, 'stone', false);
+        const a = (i / 7) * Math.PI * 2 + 0.2;
+        const st = sph('cf' + i, 0.26 + jit(x, z, i) * 0.10, 5);
+        const pos = st.getVerticesData(B.VertexBuffer.PositionKind);
+        for (let v = 0; v < pos.length; v += 3) {
+          const k = 0.80 + jit(pos[v], pos[v + 2], v + i) * 0.38;
+          pos[v] *= k; pos[v + 1] *= k; pos[v + 2] *= k;
+        }
+        st.setVerticesData(B.VertexBuffer.PositionKind, pos);
+        st.refreshBoundingInfo();
+        st.convertToFlatShadedMesh();
+        st.scaling.y = 0.72;
+        st.rotation.y = a;
+        st.position.set(x + Math.cos(a) * 0.56, 0.10, z + Math.sin(a) * 0.56);
+        add(st, i % 2 ? 'stone' : 'stoneDark', false);
       }
       [0, 1].forEach((i) => {
         const l = cyl('cl', 0.15, 0.17, 0.95, 7);
@@ -452,13 +545,17 @@
       });
       const sand = box('sbs', w, 0.24, d);
       sand.position.set(x, 0.14, z); add(sand, 'sand', false);
-      // little sand mound and a spade
-      const mound = sph('sbm', 0.85, 8);
-      mound.scaling.y = 0.5;
-      mound.position.set(x + 0.2, 0.30, z); add(mound, 'sand', false);
-      const sp = box('sbp', 0.10, 0.55, 0.05);
-      sp.rotation.z = 0.5;
-      sp.position.set(x - 0.5, 0.46, z + 0.3); add(sp, 'red', false);
+      // A low mound that stays under the rim, and a spade with an actual blade.
+      // The old mound was a half-metre dome sitting proud of the frame.
+      const mound = sph('sbm', 0.62, 8);
+      mound.scaling.y = 0.34;
+      mound.position.set(x + 0.24, 0.255, z - 0.10); add(mound, 'sand', false);
+      const shaft = cyl('sbp', 0.055, 0.055, 0.52, 6);
+      shaft.rotation.z = 0.42;
+      shaft.position.set(x - 0.52, 0.44, z + 0.28); add(shaft, 'red', false);
+      const blade = box('sbpb', 0.20, 0.22, 0.045, 0.03);
+      blade.rotation.z = 0.42;
+      blade.position.set(x - 0.62, 0.20, z + 0.28); add(blade, 'red', false);
       // the rim is low enough to hop onto
       kit.platform(x, z - d / 2, (w + 0.4) / 2, 0.2, h);
       kit.platform(x, z + d / 2, (w + 0.4) / 2, 0.2, h);
@@ -541,7 +638,7 @@
 
     /* -------------------------------------------------------------- pool */
     kit.pool = (x, z, w, d) => {
-      const h = 0.52, t = 0.34;
+      const h = 0.52, t = 0.42;
       [[0, -d / 2 - t / 2, w + t * 2, t], [0, d / 2 + t / 2, w + t * 2, t],
        [-w / 2 - t / 2, 0, t, d], [w / 2 + t / 2, 0, t, d]].forEach((r) => {
         const b = box('plr', r[2], h, r[3]);
@@ -599,17 +696,28 @@
       s = s || 1;
       const h = 0.14;          // must stay under world.js STEP_UP to be walkable
       const b = cyl('sn', 0.86 * s, 0.94 * s, h, 9);
-      b.position.set(x, h / 2, z); add(b, 'stone', false);
+      b.position.set(x, h / 2, z); add(b, 'stoneDark', false);
+      // a shallow cap a shade lighter: a single flat disc reads as paper, and
+      // the two values give the stone a top and a side
+      const cap = cyl('snc', 0.74 * s, 0.84 * s, h * 0.42, 9);
+      cap.position.set(x, h * 0.92, z); add(cap, 'stone', false);
       kit.platform(x, z, 0.44 * s, 0.44 * s, h);
     };
 
     kit.lamp = (x, z) => {
-      const p = cyl('lp', 0.10, 0.14, 2.05, 8);
-      p.position.set(x, 1.02, z); add(p, 'metal', true);
-      const head = cyl('lh', 0.46, 0.30, 0.40, 8);
-      head.position.set(x, 2.20, z); add(head, 'metal', false);
+      const base = cyl('lpb', 0.30, 0.38, 0.12, 10);
+      base.position.set(x, 0.06, z); add(base, 'metal', false);
+      const p = cyl('lp', 0.15, 0.20, 2.00, 8);
+      p.position.set(x, 1.05, z); add(p, 'metal', true);
+      const collar = cyl('lpc', 0.26, 0.22, 0.09, 8);
+      collar.position.set(x, 1.98, z); add(collar, 'metal', false);
+      const head = cyl('lh', 0.44, 0.30, 0.30, 8);
+      head.position.set(x, 2.24, z); add(head, 'metal', false);
+      const finial = sph('lpf', 0.11, 6);
+      finial.position.set(x, 2.42, z); add(finial, 'metal', false);
       const glow = sph('lg', 0.34, 8);
-      glow.position.set(x, 2.06, z);
+      glow.scaling.y = 0.82;
+      glow.position.set(x, 2.02, z);
       glow.material = mat('lampGlow', PALETTE.yellow, { emissive: 1.0 });
       glow.isPickable = false;
       kit.meshes.push(glow);
@@ -671,34 +779,57 @@
       cap2.position.set(x, 0.22 * s, z); add(cap2, colour || 'red', false);
     };
 
+    /* A smooth squashed sphere reads as a potato. Knocking the vertices about
+     * and flat-shading gives it facets, which is what makes it read as stone. */
     kit.rock = (x, z, s, ry) => {
       s = s || 1;
-      const r = sph('rk', 0.46 * s, 6);
-      r.scaling.set(1, 0.66, 0.86);
+      const r = sph('rk', 0.46 * s, 5);
+      const pos = r.getVerticesData(B.VertexBuffer.PositionKind);
+      for (let i = 0; i < pos.length; i += 3) {
+        const k = 0.78 + jit(x + pos[i], z + pos[i + 2], i) * 0.44;
+        pos[i] *= k; pos[i + 1] *= k; pos[i + 2] *= k;
+      }
+      r.setVerticesData(B.VertexBuffer.PositionKind, pos);
+      r.refreshBoundingInfo();
+      r.convertToFlatShadedMesh();
+      r.scaling.set(1.05, 0.70, 0.90);
       r.rotation.y = ry || 0;
-      r.position.set(x, 0.13 * s, z); add(r, 'stone', false);
+      r.position.set(x, 0.15 * s, z); add(r, 'stone', false);
     };
 
     // little blades poking up - cheap, and they break up flat grass a lot
     kit.grassTuft = (x, z, s) => {
       s = s || 1;
-      for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * Math.PI * 2 + Math.random();
-        const b = cyl('gt', 0, 0.09 * s, 0.30 * s + Math.random() * 0.12, 3);
-        b.rotation.set(Math.cos(a) * 0.28, a, Math.sin(a) * 0.28);
-        b.position.set(x + Math.cos(a) * 0.10 * s, 0.16 * s, z + Math.sin(a) * 0.10 * s);
+      // more blades, thinner and taller, splayed harder. Four stubby wide cones
+      // read as paper triangles; these read as grass.
+      for (let i = 0; i < 7; i++) {
+        const r0 = jit(x, z, i), r1 = jit(z, x, i + 11);
+        const a = (i / 7) * Math.PI * 2 + r0 * 0.9;
+        const len = (0.34 + r1 * 0.22) * s;
+        const b = cyl('gt', 0, 0.055 * s, len, 3);
+        b.rotation.set(Math.cos(a) * (0.30 + r1 * 0.22), a,
+                       Math.sin(a) * (0.30 + r0 * 0.22));
+        b.position.set(x + Math.cos(a) * 0.09 * s, len * 0.46, z + Math.sin(a) * 0.09 * s);
         add(b, i % 2 ? 'leafA' : 'bush', false);
       }
     };
 
     kit.hedge = (x, z, w, d) => {
-      const h = 0.72;
-      const b = box('hg', w, h, d);
+      const h = 0.66;
+      const b = box('hg', w, h, d, 0.10);
       b.position.set(x, h / 2, z); add(b, 'pineA', true);
-      for (let i = 0; i < 8; i++) {
-        const c = sph('hgb', 0.44 + Math.random() * 0.2, 6);
-        c.scaling.y = 0.55;
-        c.position.set(x + (Math.random() - 0.5) * w, h - 0.03, z + (Math.random() - 0.5) * d);
+      /* An even row of overlapping domes along the spine, inset from the ends.
+       * Scattered at random they hung off the sides and the hedge read as a box
+       * someone had dropped bushes onto. */
+      const n = Math.max(2, Math.round(w / 0.46));
+      for (let i = 0; i < n; i++) {
+        const f = n === 1 ? 0.5 : i / (n - 1);
+        const r0 = jit(x, z, i);
+        const c = sph('hgb' + i, (0.50 + r0 * 0.10) * Math.min(1, d / 0.7), 6);
+        c.scaling.y = 0.52;
+        c.position.set(x + (f - 0.5) * (w - 0.34),
+                       h - 0.06 + r0 * 0.03,
+                       z + (jit(z, x, i) - 0.5) * d * 0.22);
         add(c, i % 2 ? 'bush' : 'leafA', false);
       }
       kit.solidBox(x, z, w / 2 + 0.05, d / 2 + 0.05);
@@ -706,7 +837,7 @@
 
     kit.birdhouse = (x, z, ry) => {
       ry = ry || 0;
-      const p = cyl('bhp', 0.11, 0.13, 2.10, 8);
+      const p = cyl('bhp', 0.17, 0.20, 2.10, 8);
       p.position.set(x, 1.05, z); add(p, 'woodDark', true);
       const b = box('bhb', 0.52, 0.50, 0.46);
       b.position.set(x, 2.32, z); b.rotation.y = ry; add(b, 'plank', true);
@@ -726,8 +857,16 @@
 
     kit.seesaw = (x, z, ry) => {
       ry = ry || 0;
-      const base = cyl('ssb', 0.24, 0.46, 0.52, 8);
-      base.position.set(x, 0.26, z); add(base, 'metal', true);
+      // an A-frame under the pivot: a lone cone read as a cone with a plank on it
+      [-1, 1].forEach((sd) => {
+        const leg = box('ssl' + sd, 0.14, 0.60, 0.16, 0.05);
+        leg.rotation.set(0, ry, sd * 0.34);
+        leg.position.set(x + Math.cos(ry) * sd * 0.17, 0.30, z - Math.sin(ry) * sd * 0.17);
+        add(leg, 'metal', true);
+      });
+      const base = cyl('ssb', 0.20, 0.30, 0.16, 8);
+      base.rotation.set(0, ry, Math.PI / 2);
+      base.position.set(x, 0.58, z); add(base, 'metal', true);
       const plank = box('ssp', 0.42, 0.14, 3.10);
       plank.rotation.set(0.16, ry, 0);
       plank.position.set(x, 0.60, z); add(plank, 'yellow', true);
@@ -755,13 +894,19 @@
         r.position.set(x + Math.cos(ry) * o, 0.62, z - Math.sin(ry) * o);
         add(r, 'metal', false);
       });
+      // rails and a grab bar but no rungs is a ladder you cannot climb
+      [0.34, 0.62, 0.90].forEach((y, i) => {
+        const rung = cyl('plr' + i, 0.045, 0.045, 0.52, 6);
+        rung.rotation.set(0, ry, Math.PI / 2);
+        rung.position.set(x, y, z); add(rung, 'metal', false);
+      });
       const bar = cyl('plb', 0.07, 0.07, 0.52, 8);
       bar.rotation.set(0, ry, Math.PI / 2);
       bar.position.set(x, 1.06, z); add(bar, 'metal', false);
     };
 
     kit.umbrella = (x, z, tilt) => {
-      const p = cyl('ump', 0.09, 0.11, 2.30, 8);
+      const p = cyl('ump', 0.13, 0.16, 2.30, 8);
       p.rotation.z = tilt || 0.12;
       p.position.set(x, 1.15, z); add(p, 'white', true);
       const top = cyl('umt', 0.10, 2.60, 0.62, 10);
@@ -793,6 +938,10 @@
         l.position.set(x + Math.cos(a) * 0.24, 0.78, z + Math.sin(a) * 0.24);
         add(l, 'woodDark', false);
       }
+      const lash = B.MeshBuilder.CreateTorus('tpx',
+        { diameter: 0.30, thickness: 0.05, tessellation: 10 }, scene);
+      lash.rotation.x = Math.PI / 2;
+      lash.position.set(x, 1.40, z); add(lash, 'woodDark', false);
       const pot = cyl('tpp', 0.52, 0.42, 0.42, 10);
       pot.position.set(x, 0.72, z); add(pot, 'metal', true);
       const rim = B.MeshBuilder.CreateTorus('tpr',
@@ -803,9 +952,18 @@
 
     kit.wheelbarrow = (x, z, ry) => {
       ry = ry || 0;
-      const tub = box('wbt', 0.72, 0.42, 1.05);
+      // a plain slab read as a crate on a wheel; the taper and the lip make it
+      // read as something you tip and pour out of
+      const tub = box('wbt', 0.72, 0.40, 1.02, 0.09);
       tub.rotation.set(-0.12, ry, 0);
-      tub.position.set(x, 0.48, z); add(tub, 'blue', true);
+      tub.position.set(x, 0.50, z); add(tub, 'blue', true);
+      const tubLip = box('wbl', 0.80, 0.08, 1.10, 0.04);
+      tubLip.rotation.set(-0.12, ry, 0);
+      tubLip.position.set(x, 0.70, z); add(tubLip, 'metal', false);
+      const foot = cyl('wbf', 0.07, 0.07, 0.42, 6);
+      foot.rotation.set(0.10, ry, 0);
+      foot.position.set(x - Math.sin(ry) * 0.28, 0.21, z - Math.cos(ry) * 0.28);
+      add(foot, 'metal', false);
       const wheel = cyl('wbw', 0.46, 0.46, 0.16, 12);
       wheel.rotation.set(0, ry, Math.PI / 2);
       wheel.position.set(x + Math.sin(ry) * 0.62, 0.23, z + Math.cos(ry) * 0.62);
@@ -859,18 +1017,37 @@
       h.position.set(x, 0.34, z); add(h, colour || 'yellow', false);
     };
 
+    /* The light has to be OUTSIDE the metal. This was a solid metal box with a
+     * glowing sphere sealed inside it, so the lantern rendered as a grey slab -
+     * a lamp that never lit. Now the glow is the body, and the metal is only a
+     * cap, a base and four corner posts. */
     kit.lantern = (x, z, ry) => {
       ry = ry || 0;
-      const arm = cyl('lna', 0.06, 0.06, 0.34, 6);
+      const arm = cyl('lna', 0.05, 0.05, 0.32, 6);
       arm.rotation.set(Math.PI / 2, ry, 0);
       arm.position.set(x, 2.05, z); add(arm, 'metal', false);
-      const body = box('lnb', 0.26, 0.30, 0.26);
-      body.position.set(x, 1.88, z); add(body, 'metal', false);
-      const glow = sph('lng', 0.20, 8);
+
+      const glow = box('lng', 0.19, 0.24, 0.19, 0.03);
       glow.position.set(x, 1.88, z);
-      glow.material = mat('lampGlow', PALETTE.yellow, { emissive: 1.0 });
+      glow.rotation.y = ry;
+      glow.material = mat('lampGlow', PALETTE.yellow, { emissive: 0.85 });
       glow.isPickable = false;
       kit.meshes.push(glow);
+
+      [[0.155, 0.055, 0.27], [-0.155, 0.05, 0.25]].forEach((c, i) => {
+        const p = box('lnc' + i, c[2], c[1], c[2], 0.02);
+        p.position.set(x, 1.88 + c[0], z);
+        p.rotation.y = ry;
+        add(p, 'metal', false);
+      });
+      [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach((c, i) => {
+        const e = box('lne' + i, 0.035, 0.24, 0.035, 0.012);
+        const ox = c[0] * 0.088, oz = c[1] * 0.088;
+        e.position.set(x + ox * Math.cos(ry) - oz * Math.sin(ry), 1.88,
+                       z + ox * Math.sin(ry) + oz * Math.cos(ry));
+        e.rotation.y = ry;
+        add(e, 'metal', false);
+      });
     };
 
     /* Pier out over the water, plus a rowboat. `walkway` lets the player past
