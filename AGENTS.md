@@ -2,6 +2,17 @@
 
 This project is a browser-based Babylon.js game for kindergarten English classes. Keep changes small, visually verifiable, and compatible with the dependency-free static server.
 
+Visually verifiable means checked, not assumed. With `tools/serve.ps1` running:
+
+```bash
+node tools/shot.mjs tools/recipes/sheet.mjs http://127.0.0.1:5173/ tools/shots
+node tools/shot.mjs tools/recipes/measure.mjs
+```
+
+The first writes a labelled turnaround PNG, the second prints the silhouette as
+fractions of total height next to the reference numbers. Write a throwaway
+recipe for anything else worth looking at. See CLAUDE.md.
+
 ## Team Roles
 
 ### Island Architect
@@ -26,7 +37,7 @@ This project is a browser-based Babylon.js game for kindergarten English classes
 
 1. Inspect the owning abstraction and nearby verification path before editing.
 2. Make the smallest reversible change in one ownership area.
-3. Run a focused browser or code check immediately after the edit.
+3. Run a focused browser or code check immediately after the edit, using the capture recipes above.
 4. Review the rendered scene, then run the broader regression checklist.
 5. Keep island content data-driven; avoid copying `world.js` for every new island.
 
